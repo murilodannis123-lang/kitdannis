@@ -260,3 +260,12 @@ img { max-width: 100%; }
 /* números grandes nunca quebram no meio */
 .stat strong, .trio strong { white-space: nowrap; overflow-wrap: normal; font-size: clamp(1rem, 4.6vw, 1.35rem); }
 .brand img { width: 34px; height: 34px; border-radius: 9px; flex: none; }
+
+/* Botão de microfone */
+.voz textarea { padding-right: 62px; }
+.micbtn { position: absolute; right: 8px; top: 30px; width: 46px; height: 46px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.micbtn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.micbtn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.micbtn.gravando { background: var(--bad); animation: pulsa 1.2s ease-in-out infinite; }
+@keyframes pulsa { 0%, 100% { box-shadow: 0 0 0 0 rgba(179,54,43,.45); } 50% { box-shadow: 0 0 0 10px rgba(179,54,43,0); } }
+@media (prefers-reduced-motion: reduce) { .micbtn.gravando { animation: none; } }

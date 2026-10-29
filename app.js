@@ -760,6 +760,49 @@ $("falado").addEventListener("paste", () => {
   setTimeout(() => { if ($("falado").value.trim() && rascunho.length === 0 && !$("btnSeparar").disabled) separar(); }, 0);
 });
 
+/* ---------- Microfone (reconhecimento de voz do próprio navegador) ---------- */
+const Reconhecedor = window.SpeechRecognition || window.webkitSpeechRecognition;
+let ouvindo = null;
+$("btnMic").onclick = () => {
+  if (ouvindo) { try { ouvindo.stop(); } catch {} return; }
+  if (!Reconhecedor) {
+    $("falado").focus();
+    setMsg("Este navegador não grava direto. Toque no campo e use o microfone do teclado.");
+    return;
+  }
+  const r = new Reconhecedor();
+  r.lang = "pt-BR"; r.interimResults = true; r.continuous = false; r.maxAlternatives = 1;
+  const base = $("falado").value.trim();
+  let final = "";
+  r.onresult = ev => {
+    let parcial = "";
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const t = ev.results[i][0].transcript;
+      if (ev.results[i].isFinal) final += t + " "; else parcial += t;
+    }
+    $("falado").value = [base, (final + parcial).trim()].filter(Boolean).join(" ");
+  };
+  r.onerror = ev => {
+    const msgs = {
+      "not-allowed": "O microfone está bloqueado para este site. No iPhone: Ajustes → Apps → Safari → Microfone → Permitir.",
+      "service-not-allowed": "O ditado está desligado. No iPhone: Ajustes → Geral → Teclado → Ativar Ditado.",
+      "no-speech": "Não ouvi nada. Toque no microfone e fale de novo.",
+      "audio-capture": "Não encontrei microfone neste aparelho.",
+    };
+    setMsg(msgs[ev.error] || "Não consegui usar o microfone. Toque no campo e use o microfone do teclado.", "erro");
+  };
+  r.onend = () => {
+    ouvindo = null;
+    $("btnMic").classList.remove("gravando"); $("btnMic").setAttribute("aria-label", "Falar");
+    if (final.trim() && rascunho.length === 0) separar();
+  };
+  try {
+    r.start(); ouvindo = r;
+    $("btnMic").classList.add("gravando"); $("btnMic").setAttribute("aria-label", "Parar de gravar");
+    setMsg("Ouvindo… fale o valor e o local.");
+  } catch { setMsg("Não consegui usar o microfone. Toque no campo e use o microfone do teclado.", "erro"); }
+};
+
 /* ---------- Siri: o atalho abre o site com ?falar=texto ---------- */
 function textoDaSiri() {
   const p = new URLSearchParams(location.search);
