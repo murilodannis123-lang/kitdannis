@@ -269,3 +269,13 @@ img { max-width: 100%; }
 .micbtn.gravando { background: var(--bad); animation: pulsa 1.2s ease-in-out infinite; }
 @keyframes pulsa { 0%, 100% { box-shadow: 0 0 0 0 rgba(179,54,43,.45); } 50% { box-shadow: 0 0 0 10px rgba(179,54,43,0); } }
 @media (prefers-reduced-motion: reduce) { .micbtn.gravando { animation: none; } }
+
+/* Botão grande de falar na tela inicial */
+.falar-home { display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 18px; border: 0; border-radius: 14px; background: var(--accent); color: var(--accent-ink); font: inherit; text-align: left; cursor: pointer; box-shadow: var(--shadow); }
+.falar-home:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.falar-home .mic-circ { width: 52px; height: 52px; border-radius: 50%; background: rgba(255,255,255,.2); display: grid; place-items: center; flex: none; }
+.falar-home .mic-circ svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.falar-home .falar-txt { display: flex; flex-direction: column; gap: 2px; }
+.falar-home b { font-size: 1.1rem; font-weight: 700; }
+.falar-home small { font-size: .85rem; opacity: .9; }
+.falar-home.gravando .mic-circ { background: var(--bad); animation: pulsa 1.2s ease-in-out infinite; }

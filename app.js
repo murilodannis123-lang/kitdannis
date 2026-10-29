@@ -760,48 +760,86 @@ $("falado").addEventListener("paste", () => {
   setTimeout(() => { if ($("falado").value.trim() && rascunho.length === 0 && !$("btnSeparar").disabled) separar(); }, 0);
 });
 
-/* ---------- Microfone (reconhecimento de voz do próprio navegador) ---------- */
+/* ---------- Microfone ----------
+ * 1º tenta gravar direto (reconhecimento de voz do navegador).
+ * Se o aparelho não deixar (comum no iPhone, no app da tela de início), cai no ditado do teclado,
+ * e lembra disso para, nas próximas vezes, já abrir o teclado direto. */
 const Reconhecedor = window.SpeechRecognition || window.webkitSpeechRecognition;
 let ouvindo = null;
-$("btnMic").onclick = () => {
-  if (ouvindo) { try { ouvindo.stop(); } catch {} return; }
-  if (!Reconhecedor) {
-    $("falado").focus();
-    setMsg("Este navegador não grava direto. Toque no campo e use o microfone do teclado.");
-    return;
+const lerFlag = () => { try { return localStorage.getItem("kd-voz") || ""; } catch { return ""; } };
+const gravarFlag = v => { try { localStorage.setItem("kd-voz", v); } catch {} };
+function modoTeclado(motivo) {
+  $("dicaTeclado").hidden = false;
+  try { $("falado").focus(); } catch {}
+  if (motivo) setMsg(motivo);
+}
+// Junta os resultados sem duplicar: se um trecho já contém o anterior (iPhone), substitui; senão, acrescenta (Chrome)
+function juntarFala(results) {
+  const norm = s => s.toLowerCase().replace(/[.,!?]/g, "").replace(/\s+/g, " ").trim();
+  let out = "";
+  for (let i = 0; i < results.length; i++) {
+    const t = (results[i][0]?.transcript || "").trim();
+    if (!t) continue;
+    if (!out || norm(t).startsWith(norm(out))) out = t;
+    else if (norm(out).endsWith(norm(t)) || norm(out).includes(norm(t))) continue;
+    else out = out + " " + t;
   }
+  return out;
+}
+function falar() {
+  if (ouvindo) { try { ouvindo.stop(); } catch {} return; }
+  if (location.hash !== "#lancar") location.hash = "lancar";
+  document.querySelectorAll(".view").forEach(s => { s.hidden = s.dataset.view !== "lancar"; });
+  if (rascunho.length) fecharRascunho();
+  setMsg("");
+  if (!Reconhecedor || lerFlag() === "teclado") { modoTeclado(); return; }
   const r = new Reconhecedor();
   r.lang = "pt-BR"; r.interimResults = true; r.continuous = false; r.maxAlternatives = 1;
   const base = $("falado").value.trim();
-  let final = "";
+  let final = "", ouviuAlgo = false, teveErro = false;
+  let silencio = null;
   r.onresult = ev => {
-    let parcial = "";
-    for (let i = ev.resultIndex; i < ev.results.length; i++) {
-      const t = ev.results[i][0].transcript;
-      if (ev.results[i].isFinal) final += t + " "; else parcial += t;
-    }
-    $("falado").value = [base, (final + parcial).trim()].filter(Boolean).join(" ");
+    ouviuAlgo = true;
+    // Remonta o texto inteiro a cada atualização (o iPhone reenvia trechos já ditos; somar repetia tudo)
+    const texto = juntarFala(ev.results);
+    final = [...ev.results].some(x => x.isFinal) ? texto : final;
+    $("falado").value = [base, texto].filter(Boolean).join(" ");
+    clearTimeout(silencio);
+    silencio = setTimeout(() => { try { r.stop(); } catch {} }, 2500); // para sozinho após 2,5 s sem fala
   };
   r.onerror = ev => {
-    const msgs = {
-      "not-allowed": "O microfone está bloqueado para este site. No iPhone: Ajustes → Apps → Safari → Microfone → Permitir.",
-      "service-not-allowed": "O ditado está desligado. No iPhone: Ajustes → Geral → Teclado → Ativar Ditado.",
-      "no-speech": "Não ouvi nada. Toque no microfone e fale de novo.",
-      "audio-capture": "Não encontrei microfone neste aparelho.",
-    };
-    setMsg(msgs[ev.error] || "Não consegui usar o microfone. Toque no campo e use o microfone do teclado.", "erro");
+    if (ev.error === "no-speech" || ev.error === "aborted") return;
+    teveErro = true; setMsg("");
+    if (ev.error === "not-allowed" && lerFlag() !== "negado") {
+      setMsg("O microfone foi bloqueado. Para liberar no iPhone: Ajustes → Apps → Safari → Microfone → Permitir. Por enquanto, use o microfone do teclado.", "erro");
+      gravarFlag("negado");
+    } else {
+      gravarFlag("teclado");
+    }
+    modoTeclado();
   };
   r.onend = () => {
-    ouvindo = null;
-    $("btnMic").classList.remove("gravando"); $("btnMic").setAttribute("aria-label", "Falar");
-    if (final.trim() && rascunho.length === 0) separar();
+    ouvindo = null; clearTimeout(silencio);
+    $("btnMic").classList.remove("gravando"); $("btnFalarHome").classList.remove("gravando");
+    $("btnMic").setAttribute("aria-label", "Falar");
+    if (final.trim() && rascunho.length === 0) { gravarFlag("direto"); separar(); return; }
+    if (!teveErro) setMsg("");
+    if (!ouviuAlgo && !teveErro) {
+      // gravou mas não veio nada: neste aparelho a gravação direta não funciona; usa o teclado
+      if (lerFlag() !== "direto") gravarFlag("teclado");
+      modoTeclado("Não consegui ouvir pela gravação direta. Toque no microfone do teclado e fale.");
+    }
   };
   try {
     r.start(); ouvindo = r;
-    $("btnMic").classList.add("gravando"); $("btnMic").setAttribute("aria-label", "Parar de gravar");
+    $("btnMic").classList.add("gravando"); $("btnFalarHome").classList.add("gravando");
+    $("btnMic").setAttribute("aria-label", "Parar de gravar");
     setMsg("Ouvindo… fale o valor e o local.");
-  } catch { setMsg("Não consegui usar o microfone. Toque no campo e use o microfone do teclado.", "erro"); }
-};
+  } catch { gravarFlag("teclado"); modoTeclado(); }
+}
+$("btnMic").onclick = falar;
+$("btnFalarHome").onclick = falar;
+$("falado").addEventListener("blur", () => { setTimeout(() => { $("dicaTeclado").hidden = true; }, 200); });
 
 /* ---------- Siri: o atalho abre o site com ?falar=texto ---------- */
 function textoDaSiri() {
