@@ -279,3 +279,16 @@ img { max-width: 100%; }
 .falar-home b { font-size: 1.1rem; font-weight: 700; }
 .falar-home small { font-size: .85rem; opacity: .9; }
 .falar-home.gravando .mic-circ { background: var(--bad); animation: pulsa 1.2s ease-in-out infinite; }
+
+/* Dica: texto corrido (antes quebrava em colunas) */
+.dica { display: block; }
+/* Microfone grande no centro da barra */
+.tab-mic .tab-mic-circ { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); }
+.tab-mic .tab-mic-circ svg { width: 18px; height: 18px; }
+.tab-mic.gravando .tab-mic-circ { background: var(--bad); animation: pulsa 1.2s ease-in-out infinite; }
+@media (max-width: 759px) {
+  .tab.tab-mic { flex: 0 0 auto; padding: 0 6px; gap: 2px; color: var(--accent); }
+  .tab-mic .tab-mic-circ { width: 62px; height: 62px; margin-top: -30px; box-shadow: 0 4px 14px rgba(210,96,26,.35), 0 0 0 5px var(--surface); }
+  .tab-mic .tab-mic-circ svg { width: 28px; height: 28px; }
+  .tab-mic .tab-mic-txt { font-weight: 600; }
+}

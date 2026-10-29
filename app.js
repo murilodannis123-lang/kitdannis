@@ -460,7 +460,7 @@ async function separar() {
     const semValor = rascunho.filter(x => !(x.valor > 0)).length;
     setMsg(semValor ? `${semValor === 1 ? "Um item ficou" : semValor + " itens ficaram"} sem valor. Complete antes de salvar.` : "");
   } catch (e) {
-    setMsg("Não consegui separar esse texto. Fale de novo com o valor e o local, ou toque em Preencher na mão.", "erro");
+    setMsg(`Não consegui separar esse texto (${e?.message || "erro"}). Tente de novo ou toque em Preencher na mão.`, "erro");
     console.warn("separar:", e);
   } finally { btn.disabled = false; btn.textContent = "Separar gastos"; }
 }
@@ -820,7 +820,7 @@ function falar() {
   };
   r.onend = () => {
     ouvindo = null; clearTimeout(silencio);
-    $("btnMic").classList.remove("gravando"); $("btnFalarHome").classList.remove("gravando");
+    $("btnMic").classList.remove("gravando"); $("btnFalarHome").classList.remove("gravando"); $("btnFalarNav").classList.remove("gravando");
     $("btnMic").setAttribute("aria-label", "Falar");
     if (final.trim() && rascunho.length === 0) { gravarFlag("direto"); separar(); return; }
     if (!teveErro) setMsg("");
@@ -832,13 +832,14 @@ function falar() {
   };
   try {
     r.start(); ouvindo = r;
-    $("btnMic").classList.add("gravando"); $("btnFalarHome").classList.add("gravando");
+    $("btnMic").classList.add("gravando"); $("btnFalarHome").classList.add("gravando"); $("btnFalarNav").classList.add("gravando");
     $("btnMic").setAttribute("aria-label", "Parar de gravar");
     setMsg("Ouvindo… fale o valor e o local.");
   } catch { gravarFlag("teclado"); modoTeclado(); }
 }
 $("btnMic").onclick = falar;
 $("btnFalarHome").onclick = falar;
+$("btnFalarNav").onclick = falar;
 $("falado").addEventListener("blur", () => { setTimeout(() => { $("dicaTeclado").hidden = true; }, 200); });
 
 /* ---------- Siri: o atalho abre o site com ?falar=texto ---------- */
