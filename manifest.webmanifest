@@ -1,0 +1,17 @@
+{
+  "name": "KitDannis",
+  "short_name": "KitDannis",
+  "description": "Gestão da obra KitDannis: gastos, pedreiro e notas fiscais.",
+  "lang": "pt-BR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#16212E",
+  "theme_color": "#16212E",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

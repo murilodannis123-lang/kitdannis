@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>KitDannis</title>
+<meta name="description" content="Gestão da obra KitDannis: gastos, pedreiro e notas fiscais.">
+<meta name="theme-color" content="#16212E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="KitDannis">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<section class="login gutter" id="telaLogin" hidden>
+  <form class="card" id="formLogin" novalidate>
+    <div class="logo"><img src="icon-192.png" alt=""><div><h1>KitDannis</h1><p>Gestão da obra</p></div></div>
+    <label for="lgEmail">E-mail<input id="lgEmail" type="email" autocomplete="username" inputmode="email" required></label>
+    <label for="lgSenha">Senha<input id="lgSenha" type="password" autocomplete="current-password" required></label>
+    <button type="submit" class="btn prim" id="btnEntrar">Entrar</button>
+    <p class="msg" id="msgLogin" role="status"></p>
+  </form>
+</section>
+
+<section class="login gutter" id="telaConfig" hidden>
+  <div class="card">
+    <div class="logo"><img src="icon-192.png" alt=""><div><h1>KitDannis</h1><p>Falta configurar</p></div></div>
+    <p class="dica">Preencha a <b>Project URL</b> e a <b>anon key</b> do Supabase no arquivo <b>config.js</b> e publique de novo.</p>
+  </div>
+</section>
+<div id="appRoot" hidden>
+<header class="topbar gutter">
+  <div class="topbar-in">
+    <div class="brandrow">
+      <div class="brand">
+        <img src="icon-192.png" alt="">
+        <div><h1>KitDannis</h1><p>Gestão da obra</p></div>
+      </div>
+      <div class="headright"><span class="sync" id="status"><i></i><span id="statusTxt">Conectando</span></span><button type="button" class="sair" id="btnSair">Sair</button></div>
+    </div>
+    <nav class="tabs" aria-label="Seções">
+      <button type="button" class="tab" data-go="inicio"><svg class="ic" viewBox="0 0 24 24"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg>Visão geral</button>
+      <button type="button" class="tab" data-go="lancar"><svg class="ic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Lançar</button>
+      <button type="button" class="tab" data-go="pedreiro"><svg class="ic" viewBox="0 0 24 24"><path d="M4 17h16"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 8V6M10 11V8.5M14 11V8.5"/><path d="M8 20h8"/></svg>Pedreiro</button>
+      <button type="button" class="tab" data-go="gastos"><svg class="ic" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>Gastos</button>
+      <button type="button" class="tab" data-go="notas"><svg class="ic" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h7M9 17h5"/></svg>Notas</button>
+    </nav>
+  </div>
+</header>
+
+<main class="gutter">
+  <!-- VISÃO GERAL -->
+  <section class="view" data-view="inicio" aria-label="Visão geral">
+    <div class="card hero">
+      <div class="hero-total">
+        <span class="label">Total investido na obra</span>
+        <span class="big num" id="total">R$ 0,00</span>
+      </div>
+      <div id="orcBloco" hidden>
+        <div class="progress" id="barraOrc"><span id="barraOrcFill" style="width:0"></span></div>
+      </div>
+      <div class="orc-line" id="orcLine">
+        <span id="orcInfo">Nenhum orçamento definido</span>
+        <button type="button" class="btn link" id="btnOrc">Definir orçamento</button>
+      </div>
+      <div class="orc-edit" id="orcEdit" hidden>
+        <input id="orcInput" inputmode="decimal" placeholder="Orçamento total, ex.: 180.000,00" aria-label="Orçamento da obra">
+        <button type="button" class="btn prim" id="btnOrcSalvar">Salvar</button>
+        <button type="button" class="btn" id="btnOrcCancelar">Cancelar</button>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><span class="label">Este mês</span><strong class="num" id="stMes">R$ 0,00</strong><small id="stMesLbl"></small></div>
+      <div class="stat"><span class="label">Lançamentos</span><strong class="num" id="stQtd">0</strong><small id="stUlt">nenhum ainda</small></div>
+      <button type="button" class="stat" data-go="pedreiro"><span class="label">Pedreiro</span><strong class="num" id="stPed">—</strong><small id="stPedLbl">definir acordo</small></button>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Por categoria</h2></div>
+      <div class="cats" id="cats"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Últimos lançamentos</h2><button type="button" class="btn link" data-go="gastos">Ver todos</button></div>
+      <div class="rows" id="ultimos"></div>
+    </div>
+  </section>
+
+  <!-- LANÇAR -->
+  <section class="view" data-view="lancar" aria-label="Lançar" hidden>
+    <div class="card">
+      <div class="card-head"><h2 id="hLanc">Novo lançamento</h2></div>
+      <p class="dica destaque" id="dicaColar" hidden>Veio da Siri? Toque no campo abaixo e escolha <b>Colar</b>. Ele separa sozinho.</p>
+      <div id="rapido" class="voz">
+        <label for="falado">Fale o valor e onde gastou
+          <textarea id="falado" placeholder="Ex.: 680 na Casa do Construtor no Pix. 300 no Depósito Santa Rita. Quinzena do pedreiro 1.500."></textarea>
+        </label>
+        <svg class="ic mic" viewBox="0 0 24 24" aria-hidden="true" style="top:34px"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </div>
+      <p class="dica" id="dicaVoz">Toque no campo e use o <b>microfone do teclado</b>. Basta falar o <b>valor e o local</b>; pode falar vários de uma vez.</p>
+      <div class="acoes" id="acoesRapido">
+        <button type="button" class="btn prim" id="btnSeparar">Separar gastos</button>
+        <button type="button" class="btn" id="btnManual">Preencher na mão</button>
+      </div>
+      <p class="msg" id="msgLanc" role="status"></p>
+      <div class="lista-rasc" id="rascunho" hidden></div>
+      <div class="acoes" id="acoesRasc" hidden>
+        <button type="button" class="btn prim" id="btnSalvar">Salvar</button>
+        <button type="button" class="btn" id="btnAddItem">+ Outro item</button>
+        <button type="button" class="btn" id="btnCancelar">Cancelar</button>
+        <button type="button" class="btn perigo" id="btnExcluir" hidden>Excluir</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- PEDREIRO -->
+  <section class="view" data-view="pedreiro" aria-label="Pedreiro" hidden>
+    <div class="card">
+      <div class="card-head">
+        <div class="ped-head">
+          <div class="ico" aria-hidden="true" id="pedIni">P</div>
+          <div><h2 id="pedNome">Contas com o pedreiro</h2><p id="pedSub">Nenhum acordo definido</p></div>
+        </div>
+        <button type="button" class="btn sm" id="btnAcordo">Definir acordo</button>
+      </div>
+      <div class="vazio" id="pedVazio">Defina o acordo (quinzena, empreitada ou diária) para acompanhar quanto já foi pago e quanto ainda falta.</div>
+      <div class="form-grid" id="acordoForm" hidden>
+        <label class="full" for="acNome">Nome do pedreiro<input id="acNome" placeholder="Ex.: Seu João"></label>
+        <label for="acTipo">Tipo de acordo<select id="acTipo"><option value="quinzena">Quinzena</option><option value="empreitada">Empreitada (valor fechado)</option><option value="diaria">Diária</option></select></label>
+        <label for="acValor"><span id="acValorLbl">Valor da quinzena (R$)</span><input id="acValor" inputmode="decimal" placeholder="0,00"></label>
+        <label for="acInicio" data-qe>Começou em<input type="date" id="acInicio"></label>
+        <label for="acFim" data-q>Terminou em (opcional)<input type="date" id="acFim"></label>
+        <label class="full" for="acContagem" data-q>Contagem da quinzena<select id="acContagem"><option value="corrida">A cada 15 dias a partir do início</option><option value="mes">Do dia 1 ao 15 e do 16 ao fim do mês</option></select></label>
+        <div class="acoes full">
+          <button type="button" class="btn prim" id="btnAcSalvar">Salvar acordo</button>
+          <button type="button" class="btn" id="btnAcCancelar">Cancelar</button>
+        </div>
+      </div>
+      <div id="pedResumo" hidden style="display:flex;flex-direction:column;gap:10px">
+        <div class="trio">
+          <div><span class="label">Combinado até hoje</span><strong class="num" id="pedComb">—</strong></div>
+          <div><span class="label">Já pago</span><strong class="num" id="pedPago">—</strong></div>
+          <div><span class="label" id="pedSaldoLbl">Falta pagar</span><strong class="num" id="pedSaldo">—</strong></div>
+        </div>
+        <div class="progress"><span id="pedBarra" style="width:0;background:var(--c-mao)"></span></div>
+      </div>
+    </div>
+
+    <div class="card" id="pedQuinz" hidden>
+      <div class="card-head"><h2>Quinzenas</h2></div>
+      <div id="quinzLista"></div>
+    </div>
+
+    <div class="card" id="pedDias" hidden>
+      <div class="card-head"><h2 id="pedDiasLbl">Dias trabalhados</h2></div>
+      <div class="dias-add">
+        <input type="date" id="diaInput" aria-label="Dia trabalhado">
+        <button type="button" class="btn" id="btnDia">Marcar dia</button>
+      </div>
+      <div class="dias" id="diasLista"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2 id="pagTit">Pagamentos</h2><button type="button" class="btn prim sm" id="btnPagar">Registrar pagamento</button></div>
+      <div class="rows" id="pagLista"></div>
+    </div>
+  </section>
+
+  <!-- GASTOS -->
+  <section class="view" data-view="gastos" aria-label="Gastos" hidden>
+    <div class="card">
+      <div class="card-head"><h2>Todos os lançamentos</h2><button type="button" class="btn sm" id="btnCsv" hidden>Exportar planilha</button></div>
+      <div class="filtros" id="filtros" role="group" aria-label="Filtrar por categoria"></div>
+      <div id="lista"></div>
+    </div>
+  </section>
+  <!-- NOTAS FISCAIS -->
+  <section class="view" data-view="notas" aria-label="Notas fiscais" hidden>
+    <div class="card">
+      <div class="card-head"><h2>Notas fiscais</h2><button type="button" class="btn sm" id="btnZip" hidden>Exportar tudo (.zip)</button></div>
+      <div class="upload" id="uploadBox">
+        <label class="btn prim" for="notaFile" style="flex-direction:row;font-size:.9rem;color:var(--accent-ink)">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M12 16V4M6 10l6-6 6 6"/><path d="M4 20h16"/></svg>Adicionar nota
+          <input type="file" id="notaFile" accept="image/*,application/pdf">
+        </label>
+        <span class="dica">Foto da nota ou PDF. O Claude lê a data, o emitente, o número e o valor.</span>
+      </div>
+      <p class="msg" id="msgNota" role="status"></p>
+      <div class="item" id="notaForm" hidden style="border-left-color:var(--accent)">
+        <div class="item-top"><span id="notaFormTit">Nova nota</span><span class="lendo" id="notaLendo" hidden>Lendo a nota</span></div>
+        <div class="full" id="notaPrev"></div>
+        <label for="nfForn" class="full">Local / emitente<input id="nfForn" placeholder="Ex.: Casa do Construtor"></label>
+        <label for="nfValor">Valor (R$)<input id="nfValor" inputmode="decimal" placeholder="0,00"></label>
+        <label for="nfData">Data da nota<input id="nfData" type="date"></label>
+        <label for="nfNum">Número da nota<input id="nfNum" inputmode="numeric" placeholder="Opcional"></label>
+        <label for="nfGasto">Vincular a um gasto<select id="nfGasto"></select></label>
+        <div class="acoes full">
+          <button type="button" class="btn prim" id="btnNfSalvar">Salvar nota</button>
+          <button type="button" class="btn" id="btnNfCancelar">Cancelar</button>
+          <button type="button" class="btn" id="btnNfBaixar" hidden>Baixar arquivo</button>
+          <button type="button" class="btn perigo" id="btnNfExcluir" hidden>Excluir</button>
+        </div>
+      </div>
+      <div class="rows" id="notasLista"></div>
+    </div>
+  </section>
+</main>
+
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
