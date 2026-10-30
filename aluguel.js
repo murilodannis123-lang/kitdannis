@@ -319,7 +319,9 @@ function renderRetorno() {
   const ped = contasPedreiro();
   const saldoPed = ped.tem && acordo?.tipo === "empreitada" ? Math.max(0, ped.saldo) : 0;
   const custoAuto = gastoObra + saldoPed;
-  const custo = a.custoObra > 0 ? Number(a.custoObra) : custoAuto;
+  // custo final informado > orçamento estimado da obra (Visão geral) > o que já foi gasto/contratado
+  const fonte = a.custoObra > 0 ? "final" : orcamento > custoAuto ? "orcamento" : "auto";
+  const custo = fonte === "final" ? Number(a.custoObra) : fonte === "orcamento" ? Number(orcamento) : custoAuto;
   let recebido = 0, renda = 0, rendaCheia = 0;
   for (let n = 1; n <= TOTAL_KITS; n++) {
     const k = a.kits[n];
@@ -337,7 +339,8 @@ function renderRetorno() {
     return `${anos ? anos + (anos === 1 ? " ano" : " anos") : ""}${anos && r ? " e " : ""}${r ? r + (r === 1 ? " mês" : " meses") : ""} <small>(${nomeRefCurto(quando)})</small>`;
   };
   $("retCusto").textContent = brl.format(custo);
-  $("retCustoLbl").textContent = (a.custoObra > 0 ? "valor final informado" : `${brl.format(gastoObra)} já gastos${saldoPed ? ` + ${brl.format(saldoPed)} que falta pagar ao pedreiro` : ""}`) + ` · ${brl.format(custo / TOTAL_KITS)} por kitnet`;
+  const contas = `${brl.format(gastoObra)} já gastos${saldoPed ? ` + ${brl.format(saldoPed)} que falta pagar ao pedreiro` : ""}`;
+  $("retCustoLbl").textContent = (fonte === "final" ? "custo final informado" : fonte === "orcamento" ? `orçamento estimado da obra (até agora: ${contas})` : contas) + ` · ${brl.format(custo / TOTAL_KITS)} por kitnet`;
   $("retRecebido").textContent = brl.format(recebido);
   $("retFalta").textContent = brl.format(falta);
   $("retBarra").style.width = (custo > 0 ? Math.min(100, recebido / custo * 100) : 0) + "%";
