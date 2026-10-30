@@ -1,15 +1,17 @@
-/* KitDannis — Aluguéis: 7 kitnets, inquilinos, recebimentos e retorno do investimento.
+/* KitDannis — Aluguéis: 7 kitnets, inquilinos, recebimentos, contrato e retorno do investimento.
  * Tudo fica numa linha da tabela config (chave "aluguel"), só visível para o dono. */
 "use strict";
 
 const TOTAL_KITS = 7;
 let kitSel = null;          // kitnet aberta
-let kitModo = "ver";        // ver | contrato | pagar | vaga
-let pagEdit = null;         // pagamento aberto (recibo/excluir)
+let kitModo = "ver";        // ver | contrato | pagar | kit
+let pagEdit = null;
+let cfgAberto = false;      // formulário "dados do contrato"
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const novoId = () => (crypto.randomUUID ? crypto.randomUUID() : "id" + Date.now().toString(36) + Math.random().toString(36).slice(2));
 const so = s => String(s || "").replace(/\D/g, "");
+const r2 = v => Math.round(v * 100) / 100;
 
 function dadosAluguel() {
   if (!aluguel || typeof aluguel !== "object") aluguel = {};
@@ -17,8 +19,19 @@ function dadosAluguel() {
   for (let i = 1; i <= TOTAL_KITS; i++) {
     const k = aluguel.kits[i] || (aluguel.kits[i] = {});
     if (!Array.isArray(k.historico)) k.historico = [];
-    if (k.atual && !Array.isArray(k.atual.pags)) k.atual.pags = [];
+    if (k.mobiliada == null) k.mobiliada = true;
+    [k.atual, ...k.historico].filter(Boolean).forEach(c => {
+      if (!Array.isArray(c.pags)) c.pags = [];
+      c.ocupantes = (c.ocupantes || []).map(o => typeof o === "string" ? { nome: o, doc: "", rel: "" } : o);
+    });
   }
+  const cf = aluguel.contrato || (aluguel.contrato = {});
+  cf.loc = cf.loc || { nome: aluguel.locador?.nome || "", cpf: aluguel.locador?.cpf || "", nac: "brasileiro" };
+  cf.imovel = cf.imovel || { cidade: "Sumaré/SP" };
+  if (!cf.iptu) cf.iptu = `1/${TOTAL_KITS}`;
+  if (!cf.medicao) cf.medicao = "individual";
+  if (!cf.visitas) cf.visitas = 15;
+  if (!cf.silencio) cf.silencio = "22h e 7h";
   return aluguel;
 }
 async function salvarAluguel(msg) {
@@ -29,18 +42,46 @@ async function salvarAluguel(msg) {
 /* ---------- Datas ---------- */
 const refDe = iso => iso.slice(0, 7);
 function refMais(ref, n) { let [y, m] = ref.split("-").map(Number); m += n; while (m > 12) { m -= 12; y++; } while (m < 1) { m += 12; y--; } return `${y}-${String(m).padStart(2, "0")}`; }
-function addMeses(iso, n) { // mesmo dia n meses depois (ajusta fim de mês)
+function addMeses(iso, n) {
   const [y, m, d] = iso.split("-").map(Number);
   const alvo = refMais(`${y}-${String(m).padStart(2, "0")}`, n);
   const ult = Number(fimDoMes(alvo + "-01").slice(8));
   return `${alvo}-${String(Math.min(d, ult)).padStart(2, "0")}`;
 }
-function vencDe(ref, dia) { const ult = Number(fimDoMes(ref + "-01").slice(8)); return `${ref}-${String(Math.min(Number(dia) || 10, ult)).padStart(2, "0")}`; }
+const diasNoMes = ref => Number(fimDoMes(ref + "-01").slice(8));
+function vencDe(ref, dia) { return `${ref}-${String(Math.min(Number(dia) || 10, diasNoMes(ref))).padStart(2, "0")}`; }
+const FERIADOS_FIXOS = ["01-01", "04-21", "05-01", "09-07", "10-12", "11-02", "11-15", "11-20", "12-25"];
+function sextoDiaUtil(ref) { // dias úteis = seg a sex, sem os feriados nacionais de data fixa
+  let n = 0;
+  for (let d = 1; d <= diasNoMes(ref); d++) {
+    const iso = `${ref}-${String(d).padStart(2, "0")}`;
+    const sem = new Date(isoToUTC(iso)).getUTCDay();
+    if (sem === 0 || sem === 6 || FERIADOS_FIXOS.includes(iso.slice(5))) continue;
+    if (++n === 6) return iso;
+  }
+  return `${ref}-10`;
+}
 const nomeRef = ref => `${MESES[Number(ref.slice(5)) - 1]}/${ref.slice(0, 4)}`;
 const nomeRefCurto = ref => `${MES_CURTO[Number(ref.slice(5)) - 1]}/${ref.slice(2, 4)}`;
 const diasEntre = (a, b) => Math.round((isoToUTC(b) - isoToUTC(a)) / 86400000);
+const dataExtenso = iso => { const [y, m, d] = iso.split("-").map(Number); return `${d} de ${MESES[m - 1]} de ${y}`; };
+
+/* Aluguel proporcional do 1º mês: aluguel ÷ dias do mês × dias de ocupação (contando o dia de entrada) */
+function proporcional(valor, inicio) {
+  if (!(valor > 0) || !/^\d{4}-\d{2}-\d{2}$/.test(inicio || "")) return null;
+  const ref = refDe(inicio), diasMes = diasNoMes(ref), dia = Number(inicio.slice(8));
+  if (dia === 1) return null;
+  const dias = diasMes - dia + 1;
+  return { valor: r2(valor / diasMes * dias), dias, diasMes };
+}
 
 /* ---------- Contas de um contrato ---------- */
+function devidoNoMes(c, ref) { return ref === refDe(c.inicio) && c.prop?.valor > 0 ? Number(c.prop.valor) : Number(c.valor) || 0; }
+function vencimentoDoMes(c, ref) {
+  if (c.garantia === "caucao") return vencDe(refMais(ref, 1), c.venc);   // paga depois de usar
+  if (ref === refDe(c.inicio)) return c.inicio;                          // 1º mês: na entrega das chaves
+  return sextoDiaUtil(ref);                                              // sem garantia: adiantado (art. 42)
+}
 function mesesDoContrato(c) {
   if (!c?.inicio) return [];
   const hj = hoje();
@@ -49,11 +90,12 @@ function mesesDoContrato(c) {
   for (let ref = refDe(c.inicio); ref <= ultimo && out.length < 240; ref = refMais(ref, 1)) {
     const pags = c.pags.filter(p => p.ref === ref);
     const pago = pags.reduce((s, p) => s + (Number(p.valor) || 0), 0);
-    const venc = vencDe(ref, c.venc);
-    const quitado = pags.some(p => p.quita) || pago >= (Number(c.valor) || 0) - 0.005;
-    const falta = quitado ? 0 : Math.max(0, (Number(c.valor) || 0) - pago);
+    const devido = devidoNoMes(c, ref);
+    const venc = vencimentoDoMes(c, ref);
+    const quitado = pags.some(p => p.quita) || pago >= devido - 0.005;
+    const falta = quitado ? 0 : Math.max(0, devido - pago);
     const atrasado = !quitado && hj > venc;
-    out.push({ ref, venc, pags, pago, quitado, falta, atrasado, status: quitado ? "paga" : atrasado ? (pago > 0 ? "parcial" : "aberto") : "andamento" });
+    out.push({ ref, venc, devido, pags, pago, quitado, falta, atrasado, status: quitado ? "paga" : atrasado ? (pago > 0 ? "parcial" : "aberto") : "andamento" });
   }
   return out;
 }
@@ -98,148 +140,228 @@ function renderCasas() {
     (atrasos ? ` · <span style="color:var(--bad);font-weight:600">${atrasos} com atraso</span>` : "");
 }
 
+/* ---------- Formulários ---------- */
+function campo(id, rotulo, valor = "", extra = "", full = false) { return `<label for="${id}"${full ? ' class="full"' : ""}>${rotulo}<input id="${id}" value="${esc(valor)}" ${extra}></label>`; }
+function seletor(id, rotulo, opcoes, valor, full = false) {
+  return `<label for="${id}"${full ? ' class="full"' : ""}>${rotulo}<select id="${id}">${opcoes.map(([v, t]) => `<option value="${esc(v)}"${String(v) === String(valor ?? "") ? " selected" : ""}>${esc(t)}</option>`).join("")}</select></label>`;
+}
+const ESTADO_CIVIL = [["", "—"], ["solteiro", "Solteiro(a)"], ["casado", "Casado(a)"], ["divorciado", "Divorciado(a)"], ["viúvo", "Viúvo(a)"], ["em união estável", "União estável"]];
+const val = id => ($(id)?.value || "").trim();
+
 /* ---------- Detalhe da kitnet ---------- */
-function campo(id, rotulo, valor = "", extra = "") { return `<label for="${id}">${rotulo}<input id="${id}" value="${esc(valor)}" ${extra}></label>`; }
 function renderDetalhe() {
   const box = $("kitDet");
   if (!kitSel) { box.hidden = true; box.innerHTML = ""; return; }
   box.hidden = false;
   const n = kitSel, k = aluguel.kits[n], c = k.atual, s = situacao(n);
-  let h = `<div class="card-head"><div class="ped-head"><div class="ico kit-ico ${s.st}">${n}</div><div><h2>Kitnet ${n}${c ? " · " + esc(c.nome) : ""}</h2><p>${c ? esc(s.txt) : "Vaga"}</p></div></div>
+  let h = `<div class="card-head"><div class="ped-head"><div class="ico kit-ico ${s.st}">${n}</div><div><h2>Kitnet ${n}${c ? " · " + esc(c.nome) : ""}</h2><p>${c ? esc(s.txt) : "Vaga"} · ${k.mobiliada ? "mobiliada" : "sem mobília"}</p></div></div>
     <button type="button" class="btn sm" id="kdFechar">Fechar</button></div>`;
 
-  if (kitModo === "contrato") {
-    const v = c || {};
-    const inicio = v.inicio || hoje();
-    h += `<div class="form-grid">
-      ${campo("kfNome", "Nome do inquilino", v.nome, 'autocomplete="off"').replace("<label", '<label class="full"')}
-      ${campo("kfCpf", "CPF", v.cpf, 'inputmode="numeric" autocomplete="off"')}
-      ${campo("kfTel", "WhatsApp", v.tel, 'inputmode="tel" autocomplete="off" placeholder="(19) 99999-9999"')}
-      ${campo("kfOc2", "2º morador (opcional)", (v.ocupantes || [])[0])}
-      ${campo("kfOc3", "3º morador (opcional)", (v.ocupantes || [])[1])}
-      ${campo("kfValor", "Aluguel (R$)", fmtValorInput(Number(v.valor ?? k.valor) || null), 'inputmode="decimal" placeholder="0,00"')}
-      ${campo("kfVenc", "Dia do vencimento", v.venc || 10, 'inputmode="numeric"')}
-      ${campo("kfInicio", "Início do contrato", inicio, 'type="date"')}
-      ${campo("kfMeses", "Prazo (meses)", v.meses || 30, 'inputmode="numeric"')}
-      <label for="kfGar">Garantia<select id="kfGar"><option value="sem">Sem garantia (aluguel adiantado)</option><option value="caucao">Caução em dinheiro</option></select></label>
-      ${campo("kfCau", "Valor da caução (R$)", fmtValorInput(Number(v.caucao) || null), 'inputmode="decimal" placeholder="até 3 aluguéis"')}
-      <p class="dica full" id="kfFim"></p>
-      <div class="acoes full"><button type="button" class="btn prim" id="kfSalvar">${c ? "Salvar alterações" : "Cadastrar inquilino"}</button><button type="button" class="btn" id="kfCancelar">Cancelar</button></div>
-      <p class="msg full" id="kfMsg" role="status"></p></div>`;
-    box.innerHTML = h;
-    $("kfGar").value = v.garantia || "sem";
-    const fimTxt = () => {
-      const ini = $("kfInicio").value, m = parseInt($("kfMeses").value, 10);
-      $("kfCau").closest("label").hidden = $("kfGar").value !== "caucao";
-      $("kfFim").innerHTML = ini && m > 0 ? `Termina em <b>${dataBR(addMeses(ini, m))}</b>.` + (m < 30 ? " Com menos de 30 meses o contrato se prorroga sozinho e fica mais difícil retomar a kitnet." : "") : "";
-    };
-    ["kfInicio", "kfMeses", "kfGar"].forEach(id => $(id).addEventListener("input", fimTxt)); fimTxt();
-    $("kfCancelar").onclick = () => { kitModo = "ver"; renderDetalhe(); };
-    $("kfSalvar").onclick = salvarContrato;
-  } else if (kitModo === "pagar" && c) {
-    const abertos = mesesDoContrato(c).filter(m => !m.quitado);
-    const ref = pagEdit?.ref || abertos[0]?.ref || refDe(hoje());
-    const falta = mesesDoContrato(c).find(m => m.ref === ref)?.falta;
-    h += `<div class="form-grid">
-      ${campo("kpRef", "Mês de referência", ref, 'type="month"')}
-      ${campo("kpValor", "Valor recebido (R$)", fmtValorInput(falta || Number(c.valor) || null), 'inputmode="decimal"')}
-      ${campo("kpData", "Data do pagamento", hoje(), 'type="date"')}
-      <label class="check full" for="kpQuita"><input type="checkbox" id="kpQuita"> Dar o mês por quitado mesmo com valor menor (ex.: primeiro mês proporcional)</label>
-      <div class="acoes full"><button type="button" class="btn prim" id="kpSalvar">Registrar pagamento</button><button type="button" class="btn" id="kpCancelar">Cancelar</button></div></div>`;
-    box.innerHTML = h;
-    $("kpCancelar").onclick = () => { kitModo = "ver"; pagEdit = null; renderDetalhe(); };
-    $("kpSalvar").onclick = async () => {
-      const r = $("kpRef").value, v = parseBRL($("kpValor").value), d = $("kpData").value;
-      if (!/^\d{4}-\d{2}$/.test(r) || !(v > 0) || !d) { toast("Preencha mês, valor e data."); return; }
-      c.pags.push({ id: novoId(), ref: r, valor: Math.round(v * 100) / 100, data: d, quita: $("kpQuita").checked });
-      kitModo = "ver"; pagEdit = null;
-      await salvarAluguel("Pagamento registrado"); renderAluguel();
-    };
-  } else if (c) {
-    const meses = mesesDoContrato(c).slice().reverse();
-    const d = debito(c);
-    const fim = c.fim || "";
-    const prox = (() => { for (let a = 1; a <= 10; a++) { const r = addMeses(c.inicio, 12 * a); if (r >= hoje()) return r; } return ""; })();
-    const avisos = [];
-    if (d.linhas.length) avisos.push(`<div class="aviso ruim"><b>${brl.format(d.principal)} em atraso</b> (${d.linhas.map(l => nomeRefCurto(l.ref)).join(", ")}). Com multa de 10% e juros de 1% ao mês: <b>${brl.format(d.total)}</b>.</div>`);
-    if (fim && diasEntre(hoje(), fim) <= 60 && diasEntre(hoje(), fim) >= -30) avisos.push(`<div class="aviso">Contrato termina em <b>${dataBR(fim)}</b>. Combine a renovação ou a saída.</div>`);
-    if (prox && diasEntre(hoje(), prox) <= 30) avisos.push(`<div class="aviso">Reajuste anual pelo IPCA em <b>${dataBR(prox)}</b>.</div>`);
-    h += avisos.join("");
-    h += `<div class="kv">
-      <div><span class="label">Aluguel</span><b class="num">${brl.format(Number(c.valor) || 0)}</b></div>
-      <div><span class="label">Vence todo dia</span><b class="num">${esc(c.venc)}</b></div>
-      <div><span class="label">Contrato</span><b class="num">${dataBR(c.inicio)} a ${dataBR(fim)}</b></div>
-      <div><span class="label">Garantia</span><b>${c.garantia === "caucao" ? "Caução " + brl.format(Number(c.caucao) || 0) : "Sem garantia"}</b></div>
-      <div class="full"><span class="label">Moradores</span><b>${[c.nome, ...(c.ocupantes || [])].filter(Boolean).map(esc).join(", ")}</b></div>
-      ${c.tel || c.cpf ? `<div class="full"><span class="label">Contato</span><b>${[c.tel && esc(c.tel), c.cpf && "CPF " + esc(c.cpf)].filter(Boolean).join(" · ")}</b></div>` : ""}
-    </div>
-    <div class="acoes">
-      <button type="button" class="btn prim" id="kdPagar">Registrar pagamento</button>
-      ${d.linhas.length && so(c.tel) ? `<button type="button" class="btn" id="kdZap">Cobrar no WhatsApp</button>` : ""}
-      ${d.linhas.length ? `<button type="button" class="btn" id="kdAdv">Resumo para o advogado</button>` : ""}
-      <button type="button" class="btn" id="kdEditar">Editar dados</button>
-      <button type="button" class="btn perigo" id="kdEncerrar">Encerrar contrato</button>
-    </div>
-    <div class="card-head" style="margin-top:4px"><h2>Mês a mês</h2></div>
-    <div class="meses">${meses.map(m => `
-      <div class="mes ${m.status}">
-        <div class="mes-top"><b>${nomeRef(m.ref)}</b><span class="pill ${m.status}">${m.quitado ? "Pago" : m.atrasado ? (m.pago > 0 ? "Parcial" : "Em aberto") : "A vencer"}</span></div>
-        <div class="mes-sub">vence ${dataBR(m.venc)}${m.falta > 0 && m.pago > 0 ? ` · falta ${brl.format(m.falta)}` : ""}</div>
-        ${m.pags.map(p => `<button type="button" class="pag" data-pag="${esc(p.id)}"><span>${brl.format(Number(p.valor) || 0)} em ${dataBR(p.data)}</span><span class="pag-acao">Recibo</span></button>`).join("")}
-      </div>`).join("") || `<div class="vazio">Nenhum mês ainda.</div>`}</div>`;
+  if (kitModo === "contrato") h += formContrato(k, c);
+  else if (kitModo === "kit") h += formKit(k);
+  else if (kitModo === "pagar" && c) h += formPagar(c);
+  else if (c) h += verContrato(n, k, c);
+  else {
+    h += `<div class="vazio">Kitnet vaga${k.valor > 0 ? `, aluguel pedido de <b>${brl.format(k.valor)}</b>` : ""}. Cadastre o inquilino quando fechar o negócio; o contrato sai pronto.</div>
+      <div class="acoes"><button type="button" class="btn prim" id="kvNovo">Cadastrar inquilino</button><button type="button" class="btn" id="kvKit">Dados da kitnet</button></div>`;
     if (k.historico.length) h += historicoHtml(k);
-    box.innerHTML = h;
-    $("kdPagar").onclick = () => { kitModo = "pagar"; pagEdit = null; renderDetalhe(); };
-    $("kdEditar").onclick = () => { kitModo = "contrato"; renderDetalhe(); };
-    const enc = $("kdEncerrar");
-    enc.onclick = async () => {
-      if (!enc.classList.contains("armado")) { enc.classList.add("armado"); enc.textContent = "Toque de novo para encerrar"; setTimeout(() => { enc.classList.remove("armado"); enc.textContent = "Encerrar contrato"; }, 4000); return; }
-      c.encerradoEm = hoje(); k.historico.unshift(c); k.atual = null; k.valor = Number(c.valor) || k.valor || 0;
-      await salvarAluguel(`Kitnet ${n} está vaga`); renderAluguel();
-    };
-    if ($("kdZap")) $("kdZap").onclick = () => cobrarZap(n, c, d);
-    if ($("kdAdv")) $("kdAdv").onclick = () => resumoAdvogado(n, c, d);
-    box.querySelectorAll("[data-pag]").forEach(b => b.onclick = () => abrirPagamento(n, c, b.dataset.pag, b));
-  } else {
-    h += `<div class="vazio">Kitnet vaga. Cadastre o inquilino quando assinar o contrato.</div>
-      <div class="form-grid">${campo("kvValor", "Aluguel pedido (R$)", fmtValorInput(Number(k.valor) || null), 'inputmode="decimal" placeholder="0,00"')}
-      <div class="acoes" style="align-self:end"><button type="button" class="btn" id="kvSalvar">Salvar valor</button></div></div>
-      <div class="acoes"><button type="button" class="btn prim" id="kvNovo">Cadastrar inquilino</button></div>`;
-    if (k.historico.length) h += historicoHtml(k);
-    box.innerHTML = h;
-    $("kvSalvar").onclick = async () => { const v = parseBRL($("kvValor").value); k.valor = v > 0 ? Math.round(v * 100) / 100 : 0; await salvarAluguel("Valor salvo"); renderAluguel(); };
-    $("kvNovo").onclick = () => { kitModo = "contrato"; renderDetalhe(); };
   }
+  box.innerHTML = h;
   $("kdFechar").onclick = () => { kitSel = null; kitModo = "ver"; renderAluguel(); };
+  if (kitModo === "contrato") ligarContrato(k, c);
+  else if (kitModo === "kit") ligarKit(k);
+  else if (kitModo === "pagar" && c) ligarPagar(c);
+  else if (c) ligarVer(n, k, c);
+  else { $("kvNovo").onclick = () => { kitModo = "contrato"; renderDetalhe(); }; $("kvKit").onclick = () => { kitModo = "kit"; renderDetalhe(); }; }
+}
+
+function formKit(k) {
+  return `<div class="form-grid">
+    ${campo("kkValor", "Aluguel pedido (R$)", fmtValorInput(Number(k.valor) || null), 'inputmode="decimal" placeholder="0,00"')}
+    ${seletor("kkMob", "Entregue", [["sim", "Mobiliada"], ["nao", "Sem mobília"]], k.mobiliada ? "sim" : "nao")}
+    <label for="kkItens" class="full" id="kkItensL">Móveis e eletrodomésticos (um por linha, com marca/modelo se quiser)
+      <textarea id="kkItens" placeholder="Cama de casal com colchão&#10;Geladeira Consul 300 L&#10;Fogão 4 bocas&#10;Guarda-roupa 3 portas">${esc(k.itens || "")}</textarea></label>
+    <div class="acoes full"><button type="button" class="btn prim" id="kkSalvar">Salvar</button><button type="button" class="btn" id="kkCancelar">Cancelar</button></div></div>`;
+}
+function ligarKit(k) {
+  const mostra = () => { $("kkItensL").hidden = $("kkMob").value !== "sim"; };
+  $("kkMob").onchange = mostra; mostra();
+  $("kkCancelar").onclick = () => { kitModo = "ver"; renderDetalhe(); };
+  $("kkSalvar").onclick = async () => {
+    const v = parseBRL($("kkValor").value);
+    k.valor = v > 0 ? r2(v) : 0; k.mobiliada = $("kkMob").value === "sim"; k.itens = $("kkItens").value.trim();
+    kitModo = "ver"; await salvarAluguel("Dados da kitnet salvos"); renderAluguel();
+  };
+}
+
+function formContrato(k, c) {
+  const v = c || { nac: "brasileiro", meses: 30, garantia: "sem", venc: 10 };
+  const oc = v.ocupantes || [];
+  const ocupante = i => `<div class="oc-linha full">
+      ${campo(`kfOc${i}n`, `${i + 2}º morador`, oc[i]?.nome, 'autocomplete="off" placeholder="Nome (opcional)"')}
+      ${campo(`kfOc${i}d`, "CPF ou RG", oc[i]?.doc, 'autocomplete="off"')}
+      ${campo(`kfOc${i}r`, "Relação", oc[i]?.rel, 'placeholder="Esposa, filho…"')}</div>`;
+  return `<div class="form-grid">
+    <p class="sec full">Inquilino(a)</p>
+    ${campo("kfNome", "Nome completo", v.nome, 'autocomplete="off"', true)}
+    ${seletor("kfGen", "No contrato, tratar como", [["m", "Ele (inscrito, domiciliado)"], ["f", "Ela (inscrita, domiciliada)"]], v.gen || "m")}
+    ${campo("kfNac", "Nacionalidade", v.nac || "brasileiro")}
+    ${seletor("kfCivil", "Estado civil", ESTADO_CIVIL, v.civil)}
+    ${campo("kfProf", "Profissão", v.prof)}
+    ${campo("kfRg", "RG", v.rg, 'autocomplete="off"')}
+    ${campo("kfCpf", "CPF", v.cpf, 'inputmode="numeric" autocomplete="off"')}
+    ${campo("kfEnd", "Endereço atual (antes da kitnet)", v.end, 'autocomplete="off"', true)}
+    ${campo("kfTel", "WhatsApp", v.tel, 'inputmode="tel" autocomplete="off" placeholder="(19) 99999-9999"')}
+    ${campo("kfEmail", "E-mail", v.email, 'inputmode="email" autocomplete="off"')}
+    <p class="sec full">Moradores (máximo 3 com o inquilino)</p>
+    ${ocupante(0)}${ocupante(1)}
+    <p class="sec full">Valores e prazo</p>
+    ${campo("kfValor", "Aluguel mensal (R$)", fmtValorInput(Number(v.valor ?? k.valor) || null), 'inputmode="decimal" placeholder="0,00"')}
+    ${campo("kfInicio", "Entrada (início do contrato)", v.inicio || hoje(), 'type="date"')}
+    ${campo("kfMeses", "Prazo (meses)", v.meses || 30, 'inputmode="numeric"')}
+    ${seletor("kfGar", "Garantia", [["sem", "Sem garantia (aluguel adiantado)"], ["caucao", "Caução em dinheiro"]], v.garantia || "sem")}
+    ${campo("kfVenc", "Dia do vencimento", v.venc || 10, 'inputmode="numeric"')}
+    ${campo("kfCau", "Valor da caução (R$)", fmtValorInput(Number(v.caucao) || null), 'inputmode="decimal" placeholder="até 3 aluguéis"')}
+    <div class="calc full" id="kfCalc"></div>
+    <div class="acoes full"><button type="button" class="btn prim" id="kfSalvar">${c ? "Salvar alterações" : "Cadastrar inquilino"}</button><button type="button" class="btn" id="kfCancelar">Cancelar</button></div>
+    <p class="msg full" id="kfMsg" role="status"></p></div>`;
+}
+function ligarContrato(k, c) {
+  const atualiza = () => {
+    const ini = $("kfInicio").value, m = parseInt($("kfMeses").value, 10), valor = parseBRL($("kfValor").value);
+    const gar = $("kfGar").value;
+    $("kfCau").closest("label").hidden = gar !== "caucao";
+    $("kfVenc").closest("label").hidden = gar !== "caucao";
+    const linhas = [];
+    if (ini && m > 0) linhas.push(`Contrato de <b>${dataBR(ini)}</b> a <b>${dataBR(addMeses(ini, m))}</b>.` + (m < 30 ? ` <span style="color:var(--bad)">Com menos de 30 meses o contrato se prorroga sozinho e fica mais difícil retomar a kitnet.</span>` : ""));
+    const p = proporcional(valor, ini);
+    if (p) linhas.push(`1º mês proporcional: <b>${brl.format(p.valor)}</b> (${p.dias} de ${p.diasMes} dias de ${MESES[Number(ini.slice(5, 7)) - 1]}).`);
+    else if (valor > 0 && ini) linhas.push(`Entrando no dia 1º, o 1º mês é cheio: <b>${brl.format(valor)}</b>.`);
+    if (ini && valor > 0) linhas.push(gar === "caucao"
+      ? `Pagamento depois do uso: cada mês vence no dia escolhido do mês seguinte.`
+      : `Pagamento adiantado: 1º mês na entrega das chaves; depois, até o 6º dia útil de cada mês (art. 42).`);
+    $("kfCalc").innerHTML = linhas.map(l => `<p>${l}</p>`).join("");
+  };
+  ["kfInicio", "kfMeses", "kfGar", "kfValor"].forEach(id => $(id).addEventListener("input", atualiza));
+  $("kfGar").addEventListener("change", atualiza);
+  atualiza();
+  $("kfCancelar").onclick = () => { kitModo = "ver"; renderDetalhe(); };
+  $("kfSalvar").onclick = () => salvarContrato(k, c);
+}
+async function salvarContrato(k, cAntigo) {
+  const nome = val("kfNome"), valor = parseBRL($("kfValor").value), inicio = $("kfInicio").value;
+  const venc = parseInt($("kfVenc").value, 10), meses = parseInt($("kfMeses").value, 10), garantia = $("kfGar").value;
+  const msg = t => { const m = $("kfMsg"); m.textContent = t; m.className = "msg full erro"; };
+  if (!nome) return msg("Coloque o nome do inquilino.");
+  if (!(valor > 0)) return msg("Coloque o valor do aluguel.");
+  if (!inicio) return msg("Coloque a data de entrada.");
+  if (!(meses >= 1 && meses <= 120)) return msg("Prazo entre 1 e 120 meses.");
+  if (garantia === "caucao" && !(venc >= 1 && venc <= 31)) return msg("Dia do vencimento entre 1 e 31.");
+  const caucao = parseBRL($("kfCau").value);
+  if (garantia === "caucao" && caucao > valor * 3 + 0.005) return msg("A caução não pode passar de 3 aluguéis (art. 38, § 2º, da Lei do Inquilinato).");
+  const ocupantes = [0, 1].map(i => ({ nome: val(`kfOc${i}n`), doc: val(`kfOc${i}d`), rel: val(`kfOc${i}r`) })).filter(o => o.nome);
+  const c = cAntigo || { id: novoId(), pags: [] };
+  Object.assign(c, {
+    nome, gen: $("kfGen").value, nac: val("kfNac"), civil: $("kfCivil").value, prof: val("kfProf"), rg: val("kfRg"), cpf: val("kfCpf"),
+    end: val("kfEnd"), tel: val("kfTel"), email: val("kfEmail"), ocupantes,
+    valor: r2(valor), venc: garantia === "caucao" ? venc : null, inicio, meses, fim: addMeses(inicio, meses),
+    garantia, caucao: garantia === "caucao" && caucao > 0 ? r2(caucao) : 0, prop: proporcional(valor, inicio),
+  });
+  k.atual = c; kitModo = "ver";
+  await salvarAluguel(`Kitnet ${kitSel}: ${primeiroNome(nome)} cadastrado`); renderAluguel();
+}
+
+function formPagar(c) {
+  const meses = mesesDoContrato(c);
+  const abertos = meses.filter(m => !m.quitado);
+  const ref = abertos[0]?.ref || refDe(hoje());
+  const m = meses.find(x => x.ref === ref);
+  return `<div class="form-grid">
+    ${campo("kpRef", "Mês de referência", ref, 'type="month"')}
+    ${campo("kpValor", "Valor recebido (R$)", fmtValorInput(m?.falta || devidoNoMes(c, ref) || null), 'inputmode="decimal"')}
+    ${campo("kpData", "Data do pagamento", hoje(), 'type="date"')}
+    <p class="dica full" id="kpInfo"></p>
+    <label class="check full" for="kpQuita"><input type="checkbox" id="kpQuita"> Dar o mês por quitado mesmo com valor menor (desconto combinado)</label>
+    <div class="acoes full"><button type="button" class="btn prim" id="kpSalvar">Registrar pagamento</button><button type="button" class="btn" id="kpCancelar">Cancelar</button></div></div>`;
+}
+function ligarPagar(c) {
+  const info = () => {
+    const r = $("kpRef").value; if (!/^\d{4}-\d{2}$/.test(r)) { $("kpInfo").textContent = ""; return; }
+    const m = mesesDoContrato(c).find(x => x.ref === r);
+    const dev = devidoNoMes(c, r);
+    $("kpInfo").innerHTML = `Devido em ${nomeRef(r)}: <b>${brl.format(dev)}</b>${r === refDe(c.inicio) && c.prop ? ` (proporcional, ${c.prop.dias} dias)` : ""}${m && m.pago > 0 ? ` · já pago ${brl.format(m.pago)}` : ""}.`;
+  };
+  $("kpRef").addEventListener("input", () => { const r = $("kpRef").value; const m = mesesDoContrato(c).find(x => x.ref === r); $("kpValor").value = fmtValorInput(m ? (m.falta || m.devido) : devidoNoMes(c, r)); info(); });
+  info();
+  $("kpCancelar").onclick = () => { kitModo = "ver"; renderDetalhe(); };
+  $("kpSalvar").onclick = async () => {
+    const r = $("kpRef").value, v = parseBRL($("kpValor").value), d = $("kpData").value;
+    if (!/^\d{4}-\d{2}$/.test(r) || !(v > 0) || !d) { toast("Preencha mês, valor e data."); return; }
+    c.pags.push({ id: novoId(), ref: r, valor: r2(v), data: d, quita: $("kpQuita").checked });
+    kitModo = "ver";
+    await salvarAluguel("Pagamento registrado"); renderAluguel();
+  };
+}
+
+function verContrato(n, k, c) {
+  const meses = mesesDoContrato(c).slice().reverse();
+  const d = debito(c);
+  const prox = (() => { for (let a = 1; a <= 10; a++) { const r = addMeses(c.inicio, 12 * a); if (r >= hoje()) return r; } return ""; })();
+  const avisos = [];
+  if (d.linhas.length) avisos.push(`<div class="aviso ruim"><b>${brl.format(d.principal)} em atraso</b> (${d.linhas.map(l => nomeRefCurto(l.ref)).join(", ")}). Com multa de 10% e juros de 1% ao mês: <b>${brl.format(d.total)}</b>.</div>`);
+  if (c.fim && diasEntre(hoje(), c.fim) <= 60 && diasEntre(hoje(), c.fim) >= -30) avisos.push(`<div class="aviso">Contrato termina em <b>${dataBR(c.fim)}</b>. Combine a renovação ou a saída.</div>`);
+  if (prox && diasEntre(hoje(), prox) <= 30) avisos.push(`<div class="aviso">Reajuste anual pelo IPCA em <b>${dataBR(prox)}</b>.</div>`);
+  const pagto = c.garantia === "caucao" ? `Dia ${c.venc} do mês seguinte` : "Adiantado, até o 6º dia útil";
+  let h = avisos.join("");
+  h += `<div class="kv">
+    <div><span class="label">Aluguel</span><b class="num">${brl.format(Number(c.valor) || 0)}</b></div>
+    <div><span class="label">Vencimento</span><b>${pagto}</b></div>
+    ${c.prop ? `<div><span class="label">1º mês (proporcional)</span><b class="num">${brl.format(c.prop.valor)}</b><small class="mini">${c.prop.dias} de ${c.prop.diasMes} dias</small></div>` : ""}
+    <div><span class="label">Contrato</span><b class="num">${dataBR(c.inicio)} a ${dataBR(c.fim)}</b></div>
+    <div><span class="label">Garantia</span><b>${c.garantia === "caucao" ? "Caução " + brl.format(Number(c.caucao) || 0) : "Sem garantia"}</b></div>
+    <div class="full"><span class="label">Moradores</span><b>${[c.nome, ...c.ocupantes.map(o => o.nome)].filter(Boolean).map(esc).join(", ")}</b></div>
+    ${c.tel || c.cpf ? `<div class="full"><span class="label">Contato</span><b>${[c.tel && esc(c.tel), c.cpf && "CPF " + esc(c.cpf)].filter(Boolean).join(" · ")}</b></div>` : ""}
+  </div>
+  <div class="acoes">
+    <button type="button" class="btn prim" id="kdPagar">Registrar pagamento</button>
+    <button type="button" class="btn" id="kdDoc">Gerar contrato</button>
+    ${d.linhas.length && so(c.tel) ? `<button type="button" class="btn" id="kdZap">Cobrar no WhatsApp</button>` : ""}
+    ${d.linhas.length ? `<button type="button" class="btn" id="kdAdv">Resumo para o advogado</button>` : ""}
+    <button type="button" class="btn" id="kdEditar">Editar inquilino</button>
+    <button type="button" class="btn" id="kdKit">Dados da kitnet</button>
+    <button type="button" class="btn perigo" id="kdEncerrar">Encerrar contrato</button>
+  </div>
+  <div class="card-head" style="margin-top:4px"><h2>Mês a mês</h2></div>
+  <div class="meses">${meses.map(m => `
+    <div class="mes ${m.status}">
+      <div class="mes-top"><b>${nomeRef(m.ref)}</b><span class="pill ${m.status}">${m.quitado ? "Pago" : m.atrasado ? (m.pago > 0 ? "Parcial" : "Em aberto") : "A vencer"}</span></div>
+      <div class="mes-sub">${brl.format(m.devido)}${m.ref === refDe(c.inicio) && c.prop ? " (proporcional)" : ""} · vence ${dataBR(m.venc)}${m.falta > 0 && m.pago > 0 ? ` · falta ${brl.format(m.falta)}` : ""}</div>
+      ${m.pags.map(p => `<button type="button" class="pag" data-pag="${esc(p.id)}"><span>${brl.format(Number(p.valor) || 0)} em ${dataBR(p.data)}</span><span class="pag-acao">Recibo</span></button>`).join("")}
+    </div>`).join("") || `<div class="vazio">Nenhum mês ainda.</div>`}</div>`;
+  if (k.historico.length) h += historicoHtml(k);
+  return h;
+}
+function ligarVer(n, k, c) {
+  $("kdPagar").onclick = () => { kitModo = "pagar"; renderDetalhe(); };
+  $("kdEditar").onclick = () => { kitModo = "contrato"; renderDetalhe(); };
+  $("kdKit").onclick = () => { kitModo = "kit"; renderDetalhe(); };
+  $("kdDoc").onclick = () => abrirContratoDoc(n);
+  const enc = $("kdEncerrar");
+  enc.onclick = async () => {
+    if (!enc.classList.contains("armado")) { enc.classList.add("armado"); enc.textContent = "Toque de novo para encerrar"; setTimeout(() => { enc.classList.remove("armado"); enc.textContent = "Encerrar contrato"; }, 4000); return; }
+    c.encerradoEm = hoje(); k.historico.unshift(c); k.atual = null; k.valor = Number(c.valor) || k.valor || 0;
+    await salvarAluguel(`Kitnet ${n} está vaga`); renderAluguel();
+  };
+  const d = debito(c);
+  if ($("kdZap")) $("kdZap").onclick = () => cobrarZap(n, c, d);
+  if ($("kdAdv")) $("kdAdv").onclick = () => resumoAdvogado(n, c, d);
+  $("kitDet").querySelectorAll("[data-pag]").forEach(b => b.onclick = () => abrirPagamento(n, c, b.dataset.pag, b));
 }
 function historicoHtml(k) {
   return `<div class="card-head" style="margin-top:4px"><h2>Inquilinos anteriores</h2></div><div class="rows">` + k.historico.map(c => {
     const tot = c.pags.reduce((s, p) => s + (Number(p.valor) || 0), 0);
     return `<div class="row ext-ini"><div class="ico" style="background:var(--c-outros)">${esc(iniciais(c.nome))}</div><div class="desc"><b>${esc(c.nome)}</b><span>${dataBR(c.inicio)} a ${dataBR(c.encerradoEm)}</span></div><div class="val"><b class="num">${brl.format(tot)}</b><span>recebido</span></div></div>`;
   }).join("") + `</div>`;
-}
-
-async function salvarContrato() {
-  const k = aluguel.kits[kitSel];
-  const nome = $("kfNome").value.trim(), valor = parseBRL($("kfValor").value), inicio = $("kfInicio").value;
-  const venc = parseInt($("kfVenc").value, 10), meses = parseInt($("kfMeses").value, 10);
-  const msg = t => { const m = $("kfMsg"); m.textContent = t; m.className = "msg full erro"; };
-  if (!nome) return msg("Coloque o nome do inquilino.");
-  if (!(valor > 0)) return msg("Coloque o valor do aluguel.");
-  if (!inicio) return msg("Coloque a data de início.");
-  if (!(venc >= 1 && venc <= 31)) return msg("Dia do vencimento entre 1 e 31.");
-  if (!(meses >= 1 && meses <= 120)) return msg("Prazo entre 1 e 120 meses.");
-  const garantia = $("kfGar").value, caucao = parseBRL($("kfCau").value);
-  if (garantia === "caucao" && caucao > valor * 3 + 0.005) return msg("A caução não pode passar de 3 aluguéis (art. 38, § 2º, da Lei do Inquilinato).");
-  const c = k.atual || { id: novoId(), pags: [] };
-  Object.assign(c, {
-    nome, cpf: $("kfCpf").value.trim(), tel: $("kfTel").value.trim(),
-    ocupantes: [$("kfOc2").value.trim(), $("kfOc3").value.trim()].filter(Boolean),
-    valor: Math.round(valor * 100) / 100, venc, inicio, meses, fim: addMeses(inicio, meses),
-    garantia, caucao: garantia === "caucao" && caucao > 0 ? Math.round(caucao * 100) / 100 : 0,
-  });
-  k.atual = c; kitModo = "ver";
-  await salvarAluguel(`Kitnet ${kitSel}: ${primeiroNome(nome)} cadastrado`); renderAluguel();
 }
 
 /* ---------- Cobrança, recibo e resumo ---------- */
@@ -250,17 +372,14 @@ function cobrarZap(n, c, d) {
   window.open(`https://wa.me/${tel}?text=${encodeURIComponent(txt)}`, "_blank", "noopener");
 }
 function reciboTexto(n, c, p) {
-  const loc = aluguel.locador || {};
+  const loc = aluguel.contrato?.loc || {};
+  const prop = p.ref === refDe(c.inicio) && c.prop;
   return [
-    "RECIBO DE ALUGUEL",
-    "",
-    `Recebi de ${c.nome}${c.cpf ? ", CPF " + c.cpf : ""}, a quantia de ${brl.format(Number(p.valor) || 0)}, referente ao aluguel da Kitnet nº ${n} do conjunto KitDannis, mês de ${nomeRef(p.ref)}${p.quita && Number(p.valor) < Number(c.valor) ? " (valor proporcional)" : ""}.`,
-    "",
+    "RECIBO DE ALUGUEL", "",
+    `Recebi de ${c.nome}${c.cpf ? ", CPF " + c.cpf : ""}, a quantia de ${brl.format(Number(p.valor) || 0)} (${extenso(Number(p.valor) || 0)}), referente ao aluguel da Kitnet nº ${n} do conjunto KitDannis, mês de ${nomeRef(p.ref)}${prop ? ` (proporcional a ${c.prop.dias} dias)` : ""}.`, "",
     `Discriminação: aluguel ${brl.format(Number(p.valor) || 0)}.`,
-    `Pago em ${dataBR(p.data)}.`,
-    "",
-    `Sumaré/SP, ${dataBR(p.data)}.`,
-    "",
+    `Pago em ${dataBR(p.data)}.`, "",
+    `Sumaré/SP, ${dataExtenso(p.data)}.`, "",
     loc.nome ? `${loc.nome}${loc.cpf ? " – CPF " + loc.cpf : ""}` : "_____________________________",
     "Locador",
   ].join("\n");
@@ -289,10 +408,10 @@ function resumoAdvogado(n, c, d) {
   L.push(`RESUMO PARA AÇÃO DE DESPEJO E COBRANÇA – KITNET Nº ${n} (KitDannis)`, `Gerado em ${dataBR(hoje())}`, "");
   L.push("CONTRATO");
   L.push(`Locatário(a): ${c.nome}${c.cpf ? " – CPF " + c.cpf : ""}`);
-  if ((c.ocupantes || []).length) L.push(`Demais moradores: ${c.ocupantes.join(", ")}`);
+  if (c.ocupantes.length) L.push(`Demais moradores: ${c.ocupantes.map(o => o.nome).join(", ")}`);
   if (c.tel) L.push(`Telefone: ${c.tel}`);
   L.push(`Vigência: ${dataBR(c.inicio)} a ${dataBR(c.fim)} (${c.meses || "?"} meses)`);
-  L.push(`Aluguel: ${brl.format(Number(c.valor) || 0)} – vencimento todo dia ${c.venc}`);
+  L.push(`Aluguel: ${brl.format(Number(c.valor) || 0)} – ${c.garantia === "caucao" ? `vencimento todo dia ${c.venc} do mês seguinte` : "pagamento adiantado até o 6º dia útil do mês"}`);
   L.push(`Garantia: ${c.garantia === "caucao" ? "caução em dinheiro de " + brl.format(Number(c.caucao) || 0) : "NENHUMA (contrato sem garantia)"}`, "");
   L.push("DEMONSTRATIVO DO DÉBITO (multa 10% e juros 1% ao mês pro rata; sem correção monetária)");
   d.linhas.forEach(l => L.push(`- ${nomeRef(l.ref)} | venc. ${dataBR(l.venc)} | em aberto ${brl.format(l.falta)} | ${l.dias} dias | multa ${brl.format(l.multa)} | juros ${brl.format(l.juros)} | total ${brl.format(l.total)}`));
@@ -311,6 +430,48 @@ function resumoAdvogado(n, c, d) {
   L.push("", "Anexar: contrato assinado, Anexo I (vistoria), comprovantes e conversas de cobrança.");
   entregarArquivo(`despejo-kitnet-${n}-${slug(c.nome)}.txt`, new Blob([L.join("\r\n")], { type: "text/plain;charset=utf-8" }));
 }
+
+/* ---------- Dados fixos do contrato (você e o imóvel) ---------- */
+function renderCfgContrato() {
+  const cf = aluguel.contrato, l = cf.loc, im = cf.imovel;
+  const faltam = [!l.nome && "seu nome", !l.cpf && "seu CPF", !im.end && "endereço do imóvel", !cf.pix && "chave Pix"].filter(Boolean);
+  $("cfgResumo").innerHTML = faltam.length ? `Falta preencher: <b>${faltam.join(", ")}</b>. Sem isso o contrato sai com campos em branco.` : `Locador: <b>${esc(l.nome)}</b> · ${esc(im.end)}`;
+  $("cfgForm").hidden = !cfgAberto; $("btnCfg").textContent = cfgAberto ? "Fechar" : "Editar";
+  if (!cfgAberto) { $("cfgForm").innerHTML = ""; return; }
+  $("cfgForm").innerHTML = `
+    <p class="sec full">Você (locador)</p>
+    ${campo("cfNome", "Nome completo", l.nome, 'autocomplete="name"', true)}
+    ${campo("cfNac", "Nacionalidade", l.nac || "brasileiro")}
+    ${seletor("cfCivil", "Estado civil", ESTADO_CIVIL, l.civil)}
+    ${campo("cfProf", "Profissão", l.prof)}
+    ${campo("cfRg", "RG", l.rg)}
+    ${campo("cfCpf", "CPF", l.cpf, 'inputmode="numeric"')}
+    ${campo("cfEnd", "Seu endereço", l.end, "", true)}
+    ${campo("cfTel", "Seu WhatsApp", l.tel, 'inputmode="tel"')}
+    ${campo("cfEmail", "Seu e-mail", l.email, 'inputmode="email"')}
+    <p class="sec full">Imóvel</p>
+    ${campo("cfImEnd", "Endereço do conjunto (rua, nº, bairro)", im.end, "", true)}
+    ${campo("cfImCidade", "Cidade/UF", im.cidade || "Sumaré/SP")}
+    ${campo("cfImCep", "CEP", im.cep, 'inputmode="numeric"')}
+    ${campo("cfImMat", "Matrícula nº", im.matricula)}
+    ${campo("cfImCri", "Cartório (Registro de Imóveis)", im.cri, 'placeholder="Oficial de Registro de Imóveis de Sumaré"')}
+    <p class="sec full">Regras e cobrança</p>
+    ${campo("cfPix", "Chave Pix para o aluguel", cf.pix, "", true)}
+    ${campo("cfIptu", "Parte do IPTU de cada kitnet", cf.iptu, 'placeholder="1/7"')}
+    ${seletor("cfMed", "Água e luz", [["individual", "Medidor individual em cada kitnet"], ["coletiva", "Medidor coletivo (rateio)"]], cf.medicao)}
+    ${campo("cfCrit", "Critério do rateio (se coletivo)", cf.criterio, 'placeholder="partes iguais / nº de moradores"', true)}
+    ${campo("cfVis", "Visitante pode ficar até (dias no mês)", cf.visitas, 'inputmode="numeric"')}
+    ${campo("cfSil", "Silêncio entre", cf.silencio, 'placeholder="22h e 7h"')}
+    ${campo("cfRegras", "Outras regras de convivência (opcional)", cf.regras, "", true)}
+    <div class="acoes full"><button type="button" class="btn prim" id="cfSalvar">Salvar dados</button></div>`;
+  $("cfSalvar").onclick = async () => {
+    Object.assign(cf.loc, { nome: val("cfNome"), nac: val("cfNac"), civil: $("cfCivil").value, prof: val("cfProf"), rg: val("cfRg"), cpf: val("cfCpf"), end: val("cfEnd"), tel: val("cfTel"), email: val("cfEmail") });
+    Object.assign(cf.imovel, { end: val("cfImEnd"), cidade: val("cfImCidade"), cep: val("cfImCep"), matricula: val("cfImMat"), cri: val("cfImCri") });
+    Object.assign(cf, { pix: val("cfPix"), iptu: val("cfIptu"), medicao: $("cfMed").value, criterio: val("cfCrit"), visitas: parseInt(val("cfVis"), 10) || 15, silencio: val("cfSil") || "22h e 7h", regras: val("cfRegras") });
+    cfgAberto = false; await salvarAluguel("Dados do contrato salvos"); renderAluguel();
+  };
+}
+$("btnCfg").onclick = () => { cfgAberto = !cfgAberto; renderCfgContrato(); };
 
 /* ---------- Retorno do investimento ---------- */
 function renderRetorno() {
@@ -357,16 +518,13 @@ function abrirAjustes(abrir) {
   if (!abrir) return;
   $("raCusto").value = fmtValorInput(Number(aluguel.custoObra) || null);
   $("raDesp").value = fmtValorInput(Number(aluguel.despesasMes) || null);
-  $("raNome").value = aluguel.locador?.nome || "";
-  $("raCpf").value = aluguel.locador?.cpf || "";
 }
 $("btnRetAjustar").onclick = () => abrirAjustes(true);
 $("raCancelar").onclick = () => abrirAjustes(false);
 $("raSalvar").onclick = async () => {
   const cu = parseBRL($("raCusto").value), de = parseBRL($("raDesp").value);
-  aluguel.custoObra = cu > 0 ? Math.round(cu * 100) / 100 : null;
-  aluguel.despesasMes = de > 0 ? Math.round(de * 100) / 100 : 0;
-  aluguel.locador = { nome: $("raNome").value.trim(), cpf: $("raCpf").value.trim() };
+  aluguel.custoObra = cu > 0 ? r2(cu) : null;
+  aluguel.despesasMes = de > 0 ? r2(de) : 0;
   await salvarAluguel("Ajustes salvos"); abrirAjustes(false); renderAluguel();
 };
 
@@ -374,5 +532,6 @@ function renderAluguel() {
   dadosAluguel();
   renderCasas();
   renderDetalhe();
+  renderCfgContrato();
   renderRetorno();
 }
