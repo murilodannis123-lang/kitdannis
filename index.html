@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>KitDannis</title>
-<meta name="description" content="Gestão da obra KitDannis: gastos, pedreiro e notas fiscais.">
+<meta name="description" content="KitDannis: gastos da obra, pedreiro, notas fiscais e aluguéis das kitnets.">
 <meta name="theme-color" content="#16212E">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -50,7 +50,7 @@
       <button type="button" class="tab" data-go="pedreiro"><svg class="ic" viewBox="0 0 24 24"><path d="M4 17h16"/><path d="M6 17a6 6 0 0 1 12 0"/><path d="M12 8V6M10 11V8.5M14 11V8.5"/><path d="M8 20h8"/></svg>Pedreiro</button>
       <button type="button" class="tab tab-mic" id="btnFalarNav" aria-label="Falar um gasto"><span class="tab-mic-circ"><svg class="ic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span><span class="tab-mic-txt">Falar</span></button>
       <button type="button" class="tab" data-go="gastos"><svg class="ic" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>Gastos</button>
-      <button type="button" class="tab" data-go="notas"><svg class="ic" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h7M9 17h5"/></svg>Notas</button>
+      <button type="button" class="tab" data-go="aluguel"><svg class="ic" viewBox="0 0 24 24"><path d="M3 11 9 6l6 5"/><path d="M5 10v9h8v-9"/><path d="M15 9l3-2.5L21 9v10h-4"/><path d="M8 19v-4h2v4"/></svg>Aluguéis</button>
     </nav>
   </div>
 </header>
@@ -181,6 +181,7 @@
 
   <!-- GASTOS -->
   <section class="view" data-view="gastos" aria-label="Gastos" hidden>
+    <div class="seg" role="group" aria-label="Gastos ou notas fiscais"><button type="button" data-go="gastos">Lançamentos</button><button type="button" data-go="notas">Notas fiscais</button></div>
     <div class="card">
       <div class="card-head"><h2>Todos os lançamentos</h2><button type="button" class="btn sm" id="btnCsv" hidden>Exportar planilha</button></div>
       <div class="filtros" id="filtros" role="group" aria-label="Filtrar por categoria"></div>
@@ -189,6 +190,7 @@
   </section>
   <!-- NOTAS FISCAIS -->
   <section class="view" data-view="notas" aria-label="Notas fiscais" hidden>
+    <div class="seg" role="group" aria-label="Gastos ou notas fiscais"><button type="button" data-go="gastos">Lançamentos</button><button type="button" data-go="notas">Notas fiscais</button></div>
     <div class="card">
       <div class="card-head"><h2>Notas fiscais</h2><button type="button" class="btn sm" id="btnZip" hidden>Exportar tudo (.zip)</button></div>
       <div class="upload" id="uploadBox">
@@ -217,6 +219,37 @@
       <div class="rows" id="notasLista"></div>
     </div>
   </section>
+  <!-- ALUGUÉIS -->
+  <section class="view" data-view="aluguel" aria-label="Aluguéis" hidden>
+    <div class="card">
+      <div class="card-head"><div><h2>Kitnets</h2><p class="sub" id="alugSub"></p></div></div>
+      <div class="casas" id="casas"></div>
+      <div class="legenda"><span><i class="lg ok"></i>Alugada em dia</span><span><i class="lg atraso"></i>Aluguel atrasado</span><span><i class="lg vaga"></i>Vaga</span></div>
+    </div>
+    <div class="card" id="kitDet" hidden></div>
+    <div class="card">
+      <div class="card-head"><h2>Retorno do investimento</h2><button type="button" class="btn link" id="btnRetAjustar">Ajustar</button></div>
+      <div class="trio">
+        <div><span class="label">Custo da obra</span><strong class="num" id="retCusto">—</strong><small class="mini" id="retCustoLbl"></small></div>
+        <div><span class="label">Já recebido</span><strong class="num" id="retRecebido">—</strong></div>
+        <div><span class="label">Falta recuperar</span><strong class="num" id="retFalta">—</strong></div>
+      </div>
+      <div class="progress"><span id="retBarra" style="width:0;background:var(--ok)"></span></div>
+      <p class="mini" id="retPct"></p>
+      <div class="prazos">
+        <div><span class="label">No ritmo de hoje</span><strong id="retAgora">—</strong><small class="mini" id="retAgoraLbl"></small></div>
+        <div><span class="label">Com tudo alugado</span><strong id="retCheio">—</strong><small class="mini" id="retCheioLbl"></small></div>
+      </div>
+      <p class="dica" id="retRend"></p>
+      <div class="form-grid" id="retForm" hidden>
+        <label for="raCusto" class="full">Custo final da obra (R$) — deixe vazio para usar os gastos lançados<input id="raCusto" inputmode="decimal" placeholder="Automático"></label>
+        <label for="raDesp" class="full">Despesas mensais das kitnets (IPTU, manutenção, contas comuns)<input id="raDesp" inputmode="decimal" placeholder="0,00"></label>
+        <label for="raNome">Seu nome (sai no recibo)<input id="raNome" autocomplete="name"></label>
+        <label for="raCpf">Seu CPF (sai no recibo)<input id="raCpf" inputmode="numeric"></label>
+        <div class="acoes full"><button type="button" class="btn prim" id="raSalvar">Salvar</button><button type="button" class="btn" id="raCancelar">Cancelar</button></div>
+      </div>
+    </div>
+  </section>
 </main>
 
 </div>
@@ -226,5 +259,6 @@
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
 <script src="app.js"></script>
+<script src="aluguel.js"></script>
 </body>
 </html>

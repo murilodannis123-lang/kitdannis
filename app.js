@@ -18,7 +18,7 @@ const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" 
 const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
 const MES_CURTO = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
 const DIAS_SEMANA = ["domingo","segunda-feira","terça-feira","quarta-feira","quinta-feira","sexta-feira","sábado"];
-const VIEWS = ["inicio", "lancar", "pedreiro", "gastos", "notas"];
+const VIEWS = ["inicio", "lancar", "pedreiro", "gastos", "notas", "aluguel"];
 const BUCKET = "notas";
 const $ = id => document.getElementById(id);
 
@@ -33,6 +33,7 @@ let gastos = [];
 let notas = [];
 let acordo = null;
 let orcamento = null;
+let aluguel = null;
 let filtro = "todos";
 let rascunho = [];
 let editandoId = null;
@@ -50,6 +51,7 @@ function parseBRL(v) {
   if (v == null) return NaN;
   let s = String(v).replace(/R\$|\s/gi, "");
   if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, ""); // "1.150" = mil cento e cinquenta
   return Number(s);
 }
 function fmtValorInput(n) { return (typeof n === "number" && isFinite(n)) ? n.toFixed(2).replace(".", ",") : ""; }
@@ -89,6 +91,7 @@ async function carregar() {
   const cfg = Object.fromEntries(c.data.map(x => [x.chave, x.valor]));
   acordo = cfg.pedreiro || null;
   orcamento = cfg.obra?.orcamento > 0 ? Number(cfg.obra.orcamento) : null;
+  aluguel = cfg.aluguel || null;
   setStatus("Sincronizado", "on");
   await assinarUrls();
   render();
@@ -103,7 +106,9 @@ function viewAtual() { const h = location.hash.slice(1); return VIEWS.includes(h
 function mostrarView() {
   const v = viewAtual();
   document.querySelectorAll(".view").forEach(s => { s.hidden = s.dataset.view !== v; });
-  document.querySelectorAll(".tab").forEach(t => { if (t.dataset.go === v) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current"); });
+  const aba = v === "notas" ? "gastos" : v;
+  document.querySelectorAll(".tab").forEach(t => { if (t.dataset.go === aba) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current"); });
+  document.querySelectorAll(".seg [data-go]").forEach(t => t.setAttribute("aria-pressed", t.dataset.go === v ? "true" : "false"));
   window.scrollTo({ top: 0 });
   if (v === "lancar" && rascunho.length === 0) { try { $("falado").focus({ preventScroll: true }); } catch {} }
 }
@@ -296,6 +301,7 @@ $("btnPagar").onclick = () => {
 function render() {
   renderPedreiro();
   renderNotas();
+  if (typeof renderAluguel === "function") renderAluguel();
   const total = gastos.reduce((s, g) => s + (Number(g.valor) || 0), 0);
   $("total").textContent = brl.format(total);
 
@@ -901,6 +907,6 @@ window.addEventListener("offline", () => setStatus("Sem internet", "off"));
   if (data.session) entrarNoApp(data.session); else mostrarTela("login");
   sb.auth.onAuthStateChange((evento, sessao) => {
     if (evento === "SIGNED_IN" && sessao && !usuario) entrarNoApp(sessao);
-    if (evento === "SIGNED_OUT") { usuario = null; gastos = []; notas = []; acordo = null; orcamento = null; iniciado = false; mostrarTela("login"); }
+    if (evento === "SIGNED_OUT") { usuario = null; gastos = []; notas = []; acordo = null; orcamento = null; aluguel = null; iniciado = false; mostrarTela("login"); }
   });
 })();
