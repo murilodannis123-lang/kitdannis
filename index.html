@@ -228,6 +228,10 @@
     </div>
     <div class="card" id="kitDet" hidden></div>
     <div class="card">
+      <div class="card-head"><div><h2>Dados do contrato</h2><p class="sub" id="cfgResumo"></p></div><button type="button" class="btn link" id="btnCfg">Editar</button></div>
+      <div class="form-grid" id="cfgForm" hidden></div>
+    </div>
+    <div class="card">
       <div class="card-head"><h2>Retorno do investimento</h2><button type="button" class="btn link" id="btnRetAjustar">Ajustar</button></div>
       <div class="trio">
         <div><span class="label">Custo da obra</span><strong class="num" id="retCusto">—</strong><small class="mini" id="retCustoLbl"></small></div>
@@ -244,8 +248,6 @@
       <div class="form-grid" id="retForm" hidden>
         <label for="raCusto" class="full">Custo final da obra (R$) — deixe vazio para usar os gastos lançados<input id="raCusto" inputmode="decimal" placeholder="Automático"></label>
         <label for="raDesp" class="full">Despesas mensais das kitnets (IPTU, manutenção, contas comuns)<input id="raDesp" inputmode="decimal" placeholder="0,00"></label>
-        <label for="raNome">Seu nome (sai no recibo)<input id="raNome" autocomplete="name"></label>
-        <label for="raCpf">Seu CPF (sai no recibo)<input id="raCpf" inputmode="numeric"></label>
         <div class="acoes full"><button type="button" class="btn prim" id="raSalvar">Salvar</button><button type="button" class="btn" id="raCancelar">Cancelar</button></div>
       </div>
     </div>
@@ -254,11 +256,21 @@
 
 </div>
 
+<div class="docview" id="docView" hidden role="dialog" aria-modal="true" aria-label="Contrato">
+  <div class="doc-bar">
+    <button type="button" class="btn" id="docFechar">Fechar</button>
+    <div class="acoes"><button type="button" class="btn" id="docWord">Baixar (Word)</button><button type="button" class="btn prim" id="docImprimir">Imprimir / PDF</button></div>
+  </div>
+  <p class="doc-aviso" id="docAviso"></p>
+  <div class="doc-papel" id="docPapel"></div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
 <script src="app.js"></script>
 <script src="aluguel.js"></script>
+<script src="contrato.js"></script>
 </body>
 </html>
