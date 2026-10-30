@@ -337,7 +337,7 @@ function renderRetorno() {
     return `${anos ? anos + (anos === 1 ? " ano" : " anos") : ""}${anos && r ? " e " : ""}${r ? r + (r === 1 ? " mês" : " meses") : ""} <small>(${nomeRefCurto(quando)})</small>`;
   };
   $("retCusto").textContent = brl.format(custo);
-  $("retCustoLbl").textContent = a.custoObra > 0 ? "valor final informado" : `gastos lançados${saldoPed ? " + saldo do pedreiro" : ""}`;
+  $("retCustoLbl").textContent = (a.custoObra > 0 ? "valor final informado" : `${brl.format(gastoObra)} já gastos${saldoPed ? ` + ${brl.format(saldoPed)} que falta pagar ao pedreiro` : ""}`) + ` · ${brl.format(custo / TOTAL_KITS)} por kitnet`;
   $("retRecebido").textContent = brl.format(recebido);
   $("retFalta").textContent = brl.format(falta);
   $("retBarra").style.width = (custo > 0 ? Math.min(100, recebido / custo * 100) : 0) + "%";
