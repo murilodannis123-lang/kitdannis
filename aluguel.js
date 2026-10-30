@@ -29,7 +29,6 @@ function dadosAluguel() {
   cf.loc = cf.loc || { nome: aluguel.locador?.nome || "", cpf: aluguel.locador?.cpf || "", nac: "brasileiro" };
   cf.imovel = cf.imovel || { cidade: "Sumaré/SP" };
   if (!cf.iptu) cf.iptu = `1/${TOTAL_KITS}`;
-  if (!cf.medicao) cf.medicao = "individual";
   if (!cf.visitas) cf.visitas = 15;
   if (!cf.silencio) cf.silencio = "22h e 7h";
   return aluguel;
@@ -222,6 +221,12 @@ function formContrato(k, c) {
     ${seletor("kfGar", "Garantia", [["sem", "Sem garantia (aluguel adiantado)"], ["caucao", "Caução em dinheiro"]], v.garantia || "sem")}
     ${campo("kfVenc", "Dia do vencimento", v.venc || 10, 'inputmode="numeric"')}
     ${campo("kfCau", "Valor da caução (R$)", fmtValorInput(Number(v.caucao) || null), 'inputmode="decimal" placeholder="até 3 aluguéis"')}
+    <p class="sec full">Contas (o que foi combinado)</p>
+    ${seletor("kfLuz", "Energia elétrica", [["ind", "Independente (medidor da kitnet)"], ["rat", "Rateio (medidor comum)"]], v.luz || "ind")}
+    ${seletor("kfAgua", "Água e esgoto", [["ind", "Independente (medidor da kitnet)"], ["rat", "Rateio (medidor comum)"]], v.agua || "ind")}
+    ${campo("kfRat", "Critério do rateio", v.rateio, 'placeholder="partes iguais entre as kitnets ocupadas"', true)}
+    ${seletor("kfComum", "Despesas comuns (luz/limpeza de área comum)", [["nao", "Não há"], ["sim", "Rateadas entre as kitnets"]], v.comum || "nao")}
+    ${campo("kfComumTxt", "Valor ou critério das despesas comuns", v.comumTxt, 'placeholder="R$ 30,00 por mês / partes iguais"')}
     <div class="calc full" id="kfCalc"></div>
     <div class="acoes full"><button type="button" class="btn prim" id="kfSalvar">${c ? "Salvar alterações" : "Cadastrar inquilino"}</button><button type="button" class="btn" id="kfCancelar">Cancelar</button></div>
     <p class="msg full" id="kfMsg" role="status"></p></div>`;
@@ -232,6 +237,8 @@ function ligarContrato(k, c) {
     const gar = $("kfGar").value;
     $("kfCau").closest("label").hidden = gar !== "caucao";
     $("kfVenc").closest("label").hidden = gar !== "caucao";
+    $("kfRat").closest("label").hidden = $("kfLuz").value !== "rat" && $("kfAgua").value !== "rat";
+    $("kfComumTxt").closest("label").hidden = $("kfComum").value !== "sim";
     const linhas = [];
     if (ini && m > 0) linhas.push(`Contrato de <b>${dataBR(ini)}</b> a <b>${dataBR(addMeses(ini, m))}</b>.` + (m < 30 ? ` <span style="color:var(--bad)">Com menos de 30 meses o contrato se prorroga sozinho e fica mais difícil retomar a kitnet.</span>` : ""));
     const p = proporcional(valor, ini);
@@ -243,7 +250,7 @@ function ligarContrato(k, c) {
     $("kfCalc").innerHTML = linhas.map(l => `<p>${l}</p>`).join("");
   };
   ["kfInicio", "kfMeses", "kfGar", "kfValor"].forEach(id => $(id).addEventListener("input", atualiza));
-  $("kfGar").addEventListener("change", atualiza);
+  ["kfGar", "kfLuz", "kfAgua", "kfComum"].forEach(id => $(id).addEventListener("change", atualiza));
   atualiza();
   $("kfCancelar").onclick = () => { kitModo = "ver"; renderDetalhe(); };
   $("kfSalvar").onclick = () => salvarContrato(k, c);
@@ -266,6 +273,7 @@ async function salvarContrato(k, cAntigo) {
     end: val("kfEnd"), tel: val("kfTel"), email: val("kfEmail"), ocupantes,
     valor: r2(valor), venc: garantia === "caucao" ? venc : null, inicio, meses, fim: addMeses(inicio, meses),
     garantia, caucao: garantia === "caucao" && caucao > 0 ? r2(caucao) : 0, prop: proporcional(valor, inicio),
+    luz: $("kfLuz").value, agua: $("kfAgua").value, rateio: val("kfRat"), comum: $("kfComum").value, comumTxt: val("kfComumTxt"),
   });
   k.atual = c; kitModo = "ver";
   await salvarAluguel(`Kitnet ${kitSel}: ${primeiroNome(nome)} cadastrado`); renderAluguel();
@@ -458,8 +466,6 @@ function renderCfgContrato() {
     <p class="sec full">Regras e cobrança</p>
     ${campo("cfPix", "Chave Pix para o aluguel", cf.pix, "", true)}
     ${campo("cfIptu", "Parte do IPTU de cada kitnet", cf.iptu, 'placeholder="1/7"')}
-    ${seletor("cfMed", "Água e luz", [["individual", "Medidor individual em cada kitnet"], ["coletiva", "Medidor coletivo (rateio)"]], cf.medicao)}
-    ${campo("cfCrit", "Critério do rateio (se coletivo)", cf.criterio, 'placeholder="partes iguais / nº de moradores"', true)}
     ${campo("cfVis", "Visitante pode ficar até (dias no mês)", cf.visitas, 'inputmode="numeric"')}
     ${campo("cfSil", "Silêncio entre", cf.silencio, 'placeholder="22h e 7h"')}
     ${campo("cfRegras", "Outras regras de convivência (opcional)", cf.regras, "", true)}
@@ -467,7 +473,7 @@ function renderCfgContrato() {
   $("cfSalvar").onclick = async () => {
     Object.assign(cf.loc, { nome: val("cfNome"), nac: val("cfNac"), civil: $("cfCivil").value, prof: val("cfProf"), rg: val("cfRg"), cpf: val("cfCpf"), end: val("cfEnd"), tel: val("cfTel"), email: val("cfEmail") });
     Object.assign(cf.imovel, { end: val("cfImEnd"), cidade: val("cfImCidade"), cep: val("cfImCep"), matricula: val("cfImMat"), cri: val("cfImCri") });
-    Object.assign(cf, { pix: val("cfPix"), iptu: val("cfIptu"), medicao: $("cfMed").value, criterio: val("cfCrit"), visitas: parseInt(val("cfVis"), 10) || 15, silencio: val("cfSil") || "22h e 7h", regras: val("cfRegras") });
+    Object.assign(cf, { pix: val("cfPix"), iptu: val("cfIptu"), visitas: parseInt(val("cfVis"), 10) || 15, silencio: val("cfSil") || "22h e 7h", regras: val("cfRegras") });
     cfgAberto = false; await salvarAluguel("Dados do contrato salvos"); renderAluguel();
   };
 }
