@@ -489,15 +489,19 @@ function renderRetorno() {
   // custo final informado > orçamento estimado da obra (Visão geral) > o que já foi gasto/contratado
   const fonte = a.custoObra > 0 ? "final" : orcamento > custoAuto ? "orcamento" : "auto";
   const custo = fonte === "final" ? Number(a.custoObra) : fonte === "orcamento" ? Number(orcamento) : custoAuto;
+  // Com uma kitnet aberta, mostra só a parte dela: 1/7 do custo, o que ela recebeu e o aluguel dela
+  const so1 = kitSel ? Number(kitSel) : null;
+  const custoMostra = so1 ? custo / TOTAL_KITS : custo;
   let recebido = 0, renda = 0, rendaCheia = 0;
   for (let n = 1; n <= TOTAL_KITS; n++) {
+    if (so1 && n !== so1) continue;
     const k = a.kits[n];
     [k.atual, ...k.historico].filter(Boolean).forEach(c => c.pags.forEach(p => { recebido += Number(p.valor) || 0; }));
     if (k.atual) renda += Number(k.atual.valor) || 0;
     rendaCheia += Number(k.atual?.valor || k.valor) || 0;
   }
-  const desp = Number(a.despesasMes) || 0;
-  const falta = Math.max(0, custo - recebido);
+  const desp = (Number(a.despesasMes) || 0) / (so1 ? TOTAL_KITS : 1);
+  const falta = Math.max(0, custoMostra - recebido);
   const prazo = liq => {
     if (falta <= 0) return "Investimento recuperado";
     if (!(liq > 0)) return "—";
@@ -505,19 +509,24 @@ function renderRetorno() {
     const quando = refMais(refDe(hoje()), m);
     return `${anos ? anos + (anos === 1 ? " ano" : " anos") : ""}${anos && r ? " e " : ""}${r ? r + (r === 1 ? " mês" : " meses") : ""} <small>(${nomeRefCurto(quando)})</small>`;
   };
-  $("retCusto").textContent = brl.format(custo);
+  $("retTitulo").textContent = so1 ? `Retorno da Kitnet ${so1}` : "Retorno do investimento (todas)";
+  $("retCustoTit").textContent = so1 ? "Custo desta kitnet" : "Custo da obra";
+  $("retCusto").textContent = brl.format(custoMostra);
   const contas = `${brl.format(gastoObra)} já gastos${saldoPed ? ` + ${brl.format(saldoPed)} que falta pagar ao pedreiro` : ""}`;
-  $("retCustoLbl").textContent = (fonte === "final" ? "custo final informado" : fonte === "orcamento" ? `orçamento estimado da obra (até agora: ${contas})` : contas) + ` · ${brl.format(custo / TOTAL_KITS)} por kitnet`;
+  const base = fonte === "final" ? "custo final informado" : fonte === "orcamento" ? `orçamento da obra (até agora: ${contas})` : contas;
+  $("retCustoLbl").textContent = so1 ? `${brl.format(custo)} ÷ ${TOTAL_KITS} kitnets · ${base}` : `${base} · ${brl.format(custo / TOTAL_KITS)} por kitnet`;
   $("retRecebido").textContent = brl.format(recebido);
   $("retFalta").textContent = brl.format(falta);
-  $("retBarra").style.width = (custo > 0 ? Math.min(100, recebido / custo * 100) : 0) + "%";
-  $("retPct").textContent = custo > 0 ? `${(recebido / custo * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% recuperado` : "";
-  $("retAgora").innerHTML = prazo(renda - desp);
+  $("retBarra").style.width = (custoMostra > 0 ? Math.min(100, recebido / custoMostra * 100) : 0) + "%";
+  $("retPct").textContent = custoMostra > 0 ? `${(recebido / custoMostra * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% recuperado` : "";
+  $("retAgora").innerHTML = so1 && !renda ? "<small>Kitnet vaga</small>" : prazo(renda - desp);
   $("retAgoraLbl").textContent = `com ${brl.format(renda)}/mês de aluguel${desp ? ` − ${brl.format(desp)} de despesas` : ""}`;
-  $("retCheio").innerHTML = rendaCheia > 0 ? prazo(rendaCheia - desp) : "<small>Defina o aluguel das vagas</small>";
-  $("retCheioLbl").textContent = `com as ${TOTAL_KITS} alugadas: ${brl.format(rendaCheia)}/mês`;
-  const rent = custo > 0 && rendaCheia > 0 ? (rendaCheia - desp) * 12 / custo * 100 : 0;
-  $("retRend").textContent = rent ? `Rende ${rent.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% ao ano sobre o custo da obra com tudo alugado.` : "";
+  $("retCheioTit").textContent = so1 ? "Sempre alugada" : "Com tudo alugado";
+  $("retCheio").innerHTML = rendaCheia > 0 ? prazo(rendaCheia - desp) : `<small>Defina o aluguel ${so1 ? "desta kitnet" : "das vagas"}</small>`;
+  $("retCheioLbl").textContent = so1 ? `com ${brl.format(rendaCheia)}/mês todo mês` : `com as ${TOTAL_KITS} alugadas: ${brl.format(rendaCheia)}/mês`;
+  const rent = custoMostra > 0 && rendaCheia > 0 ? (rendaCheia - desp) * 12 / custoMostra * 100 : 0;
+  $("retRend").textContent = rent ? `Rende ${rent.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% ao ano sobre o custo ${so1 ? "desta kitnet" : "da obra com tudo alugado"}.` : "";
+  $("retTodas").hidden = !so1;
 }
 function abrirAjustes(abrir) {
   $("retForm").hidden = !abrir; $("btnRetAjustar").hidden = abrir;
@@ -526,6 +535,7 @@ function abrirAjustes(abrir) {
   $("raDesp").value = fmtValorInput(Number(aluguel.despesasMes) || null);
 }
 $("btnRetAjustar").onclick = () => abrirAjustes(true);
+$("retTodas").onclick = () => { kitSel = null; kitModo = "ver"; renderAluguel(); };
 $("raCancelar").onclick = () => abrirAjustes(false);
 $("raSalvar").onclick = async () => {
   const cu = parseBRL($("raCusto").value), de = parseBRL($("raDesp").value);
