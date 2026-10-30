@@ -104,11 +104,12 @@ ${par("8.1. O pagamento após o vencimento sujeitará o(a) LOCATÁRIO(A) a <b>mu
 ${par("8.2. A tolerância do LOCADOR quanto a atrasos ou ao descumprimento de qualquer cláusula será mera liberalidade e não implicará novação nem alteração do contrato.")}
 
 ${cl("CLÁUSULA 9ª – DOS ENCARGOS")}
-${par("9.1. Além do aluguel, cabem ao(à) LOCATÁRIO(A), a partir da entrega das chaves:")}
-${sub(`a) as contas de energia elétrica, água e esgoto, gás e internet da kitnet (art. 23, inciso VIII, da Lei nº 8.245/1991). ${cf.medicao === "coletiva"
-  ? `Havendo medição coletiva, o valor será rateado entre as unidades conforme ${B(cf.criterio, 20)}, mediante apresentação da conta ao(à) LOCATÁRIO(A);`
-  : "A kitnet possui medidores próprios, e as contas serão transferidas para o nome do(a) LOCATÁRIO(A) ou pagas diretamente por ele(a);"}`)}
-${sub(`b) a parcela do IPTU e das taxas municipais correspondente à kitnet, na proporção de ${B(cf.iptu, 5)} do lançamento do imóvel, paga junto com o aluguel, conforme permite o art. 22, inciso VIII, da Lei nº 8.245/1991.`)}
+${par("9.1. Além do aluguel, cabem ao(à) LOCATÁRIO(A), a partir da entrega das chaves, as contas de consumo da kitnet (art. 23, inciso VIII, da Lei nº 8.245/1991) e os encargos abaixo, na forma combinada entre as partes:")}
+${sub(`a) <b>Energia elétrica:</b> ${X(c.luz !== "rat")} independente – medidor próprio da kitnet, com a conta em nome do(a) LOCATÁRIO(A) ou paga diretamente por ele(a); ${X(c.luz === "rat")} rateio – medição comum, com o valor rateado entre as unidades conforme ${B(c.luz === "rat" ? c.rateio : "", 20)}, mediante apresentação da conta;`)}
+${sub(`b) <b>Água e esgoto:</b> ${X(c.agua !== "rat")} independente – medidor próprio da kitnet, com a conta em nome do(a) LOCATÁRIO(A) ou paga diretamente por ele(a); ${X(c.agua === "rat")} rateio – medição comum, com o valor rateado entre as unidades conforme ${B(c.agua === "rat" ? c.rateio : "", 20)}, mediante apresentação da conta;`)}
+${sub("c) <b>Gás e internet:</b> contratados e pagos diretamente pelo(a) LOCATÁRIO(A);")}
+${sub(`d) <b>IPTU:</b> a parcela do IPTU e das taxas municipais correspondente à kitnet, na proporção de ${B(cf.iptu, 5)} do lançamento do imóvel, paga junto com o aluguel, conforme permite o art. 22, inciso VIII, da Lei nº 8.245/1991;`)}
+${sub(`e) <b>Despesas comuns</b> (iluminação, limpeza e manutenção de áreas de uso comum, se houver): ${X(c.comum !== "sim")} não há; ${X(c.comum === "sim")} rateadas entre as unidades, desde que comprovadas, conforme ${B(c.comum === "sim" ? c.comumTxt : "", 20)}.`)}
 ${par("9.2. O seguro contra incêndio do imóvel será contratado pelo LOCADOR.")}
 
 ${cl("CLÁUSULA 10ª – DA GARANTIA")}
