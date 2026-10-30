@@ -228,13 +228,9 @@
     </div>
     <div class="card" id="kitDet" hidden></div>
     <div class="card">
-      <div class="card-head"><div><h2>Dados do contrato</h2><p class="sub" id="cfgResumo"></p></div><button type="button" class="btn link" id="btnCfg">Editar</button></div>
-      <div class="form-grid" id="cfgForm" hidden></div>
-    </div>
-    <div class="card">
-      <div class="card-head"><h2>Retorno do investimento</h2><button type="button" class="btn link" id="btnRetAjustar">Ajustar</button></div>
+      <div class="card-head"><h2 id="retTitulo">Retorno do investimento</h2><div class="acoes"><button type="button" class="btn link" id="retTodas" hidden>Ver todas</button><button type="button" class="btn link" id="btnRetAjustar">Ajustar</button></div></div>
       <div class="trio">
-        <div><span class="label">Custo da obra</span><strong class="num" id="retCusto">—</strong><small class="mini" id="retCustoLbl"></small></div>
+        <div><span class="label" id="retCustoTit">Custo da obra</span><strong class="num" id="retCusto">—</strong><small class="mini" id="retCustoLbl"></small></div>
         <div><span class="label">Já recebido</span><strong class="num" id="retRecebido">—</strong></div>
         <div><span class="label">Falta recuperar</span><strong class="num" id="retFalta">—</strong></div>
       </div>
@@ -242,7 +238,7 @@
       <p class="mini" id="retPct"></p>
       <div class="prazos">
         <div><span class="label">No ritmo de hoje</span><strong id="retAgora">—</strong><small class="mini" id="retAgoraLbl"></small></div>
-        <div><span class="label">Com tudo alugado</span><strong id="retCheio">—</strong><small class="mini" id="retCheioLbl"></small></div>
+        <div><span class="label" id="retCheioTit">Com tudo alugado</span><strong id="retCheio">—</strong><small class="mini" id="retCheioLbl"></small></div>
       </div>
       <p class="dica" id="retRend"></p>
       <div class="form-grid" id="retForm" hidden>
@@ -250,6 +246,10 @@
         <label for="raDesp" class="full">Despesas mensais das kitnets (IPTU, manutenção, contas comuns)<input id="raDesp" inputmode="decimal" placeholder="0,00"></label>
         <div class="acoes full"><button type="button" class="btn prim" id="raSalvar">Salvar</button><button type="button" class="btn" id="raCancelar">Cancelar</button></div>
       </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h2>Dados do contrato</h2><p class="sub" id="cfgResumo"></p></div><button type="button" class="btn link" id="btnCfg">Editar</button></div>
+      <div class="form-grid" id="cfgForm" hidden></div>
     </div>
   </section>
 </main>
