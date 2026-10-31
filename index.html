@@ -209,6 +209,11 @@
         <label for="nfData">Data da nota<input id="nfData" type="date"></label>
         <label for="nfNum">Número da nota<input id="nfNum" inputmode="numeric" placeholder="Opcional"></label>
         <label for="nfGasto">Vincular a um gasto<select id="nfGasto"></select></label>
+        <div class="pergunta full" id="nfPergunta" hidden>
+          <p id="nfPergTxt"></p>
+          <label for="nfCat">Categoria do gasto<select id="nfCat"></select></label>
+          <div class="acoes"><button type="button" class="btn prim" id="nfSim">Sim, lançar nos gastos</button><button type="button" class="btn" id="nfNao">Não, só guardar a nota</button></div>
+        </div>
         <div class="acoes full">
           <button type="button" class="btn prim" id="btnNfSalvar">Salvar nota</button>
           <button type="button" class="btn" id="btnNfCancelar">Cancelar</button>
