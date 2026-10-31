@@ -618,7 +618,7 @@ function abrirNota(n) {
   sugerirGasto();
   if (n.paraIA) lerNota(n);
 }
-["nfForn", "nfValor", "nfData", "nfNum", "nfGasto"].forEach(id => $(id).addEventListener("input", () => { nfTocados.add(id); if (id === "nfValor" || id === "nfData") sugerirGasto(); }));
+["nfForn", "nfValor", "nfData", "nfNum", "nfGasto"].forEach(id => $(id).addEventListener("input", () => { nfTocados.add(id); $("nfPergunta").hidden = true; $("btnNfSalvar").hidden = false; if (id === "nfValor" || id === "nfData") sugerirGasto(); }));
 async function lerNota(n) {
   $("notaLendo").hidden = false;
   try {
@@ -683,26 +683,61 @@ $("notaFile").addEventListener("change", async () => {
     msgNota("Não consegui enviar o arquivo. Confira a internet e tente de novo.", "erro");
   }
 });
-function fecharNota() { notaEdit = null; $("notaForm").hidden = true; $("uploadBox").hidden = false; $("notaLendo").hidden = true; renderNotas(); }
+function fecharNota() { notaEdit = null; $("nfPergunta").hidden = true; $("btnNfSalvar").hidden = false; $("notaForm").hidden = true; $("uploadBox").hidden = false; $("notaLendo").hidden = true; renderNotas(); }
 $("btnNfCancelar").onclick = async () => {
   const n = notaEdit; fecharNota(); msgNota("");
   if (n?.novo) await sb.storage.from(BUCKET).remove([n.arquivo]);
 };
+function corpoNota(gastoId) {
+  const v = parseBRL($("nfValor").value);
+  return {
+    arquivo: notaEdit.arquivo, tipo: notaEdit.tipo || "", nome_arquivo: notaEdit.nomeArquivo || "",
+    fornecedor: $("nfForn").value.trim(), valor: v > 0 ? Math.round(v * 100) / 100 : null,
+    data: $("nfData").value || null, numero: $("nfNum").value.trim(), gasto_id: gastoId || null,
+  };
+}
+async function gravarNota(gastoId) {
+  const r = notaEdit.id ? await sb.from("notas").update(corpoNota(gastoId)).eq("id", notaEdit.id) : await sb.from("notas").insert(corpoNota(gastoId));
+  if (r.error) throw r.error;
+}
+function travarNota(sim) { ["btnNfSalvar", "nfSim", "nfNao"].forEach(id => { $(id).disabled = sim; }); }
 $("btnNfSalvar").onclick = async () => {
   if (!notaEdit) return;
   const v = parseBRL($("nfValor").value);
-  const corpo = {
-    arquivo: notaEdit.arquivo, tipo: notaEdit.tipo || "", nome_arquivo: notaEdit.nomeArquivo || "",
-    fornecedor: $("nfForn").value.trim(), valor: v > 0 ? Math.round(v * 100) / 100 : null,
-    data: $("nfData").value || null, numero: $("nfNum").value.trim(), gasto_id: $("nfGasto").value || null,
-  };
-  $("btnNfSalvar").disabled = true;
+  // Nota nova sem gasto vinculado: pergunta se é para somar o valor nos gastos
+  if (notaEdit.novo && !$("nfGasto").value && v > 0) {
+    $("nfPergTxt").innerHTML = `Quer somar <b>${brl.format(v)}</b>${$("nfForn").value.trim() ? ` (${esc($("nfForn").value.trim())})` : ""} nos gastos da obra?`;
+    const sel = $("nfCat"); if (!sel.options.length) CATS.forEach(c => { const o = document.createElement("option"); o.value = c.id; o.textContent = c.nome; sel.appendChild(o); });
+    sel.value = "material";
+    $("nfPergunta").hidden = false; $("btnNfSalvar").hidden = true;
+    $("nfPergunta").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    return;
+  }
+  travarNota(true);
+  try { await gravarNota($("nfGasto").value); fecharNota(); msgNota(""); toast("Nota salva"); await carregar(); }
+  catch (e) { console.warn(e); msgNota("Não consegui salvar a nota. Tente de novo.", "erro"); }
+  finally { travarNota(false); }
+};
+$("nfNao").onclick = async () => {
+  travarNota(true);
+  try { await gravarNota(null); fecharNota(); msgNota(""); toast("Nota salva (sem lançar nos gastos)"); await carregar(); }
+  catch (e) { console.warn(e); msgNota("Não consegui salvar a nota. Tente de novo.", "erro"); }
+  finally { travarNota(false); }
+};
+$("nfSim").onclick = async () => {
+  const v = parseBRL($("nfValor").value);
+  if (!(v > 0)) { msgNota("Coloque o valor da nota.", "erro"); return; }
+  travarNota(true);
   try {
-    const r = notaEdit.id ? await sb.from("notas").update(corpo).eq("id", notaEdit.id) : await sb.from("notas").insert(corpo);
-    if (r.error) throw r.error;
-    fecharNota(); msgNota(""); toast("Nota salva"); await carregar();
-  } catch (e) { console.warn(e); msgNota("Não consegui salvar a nota. Tente de novo.", "erro"); }
-  finally { $("btnNfSalvar").disabled = false; }
+    const g = await sb.from("gastos").insert({
+      descricao: "", valor: Math.round(v * 100) / 100, categoria: $("nfCat").value || "material",
+      fornecedor: $("nfForn").value.trim(), data: $("nfData").value || hoje(), pagamento: "", pedreiro: false,
+    }).select("id").single();
+    if (g.error) throw g.error;
+    await gravarNota(g.data?.id);
+    fecharNota(); msgNota(""); toast(`Nota salva e ${brl.format(v)} lançado nos gastos`); await carregar();
+  } catch (e) { console.warn(e); msgNota("Não consegui salvar. Confira a internet e tente de novo.", "erro"); }
+  finally { travarNota(false); }
 };
 $("btnNfExcluir").onclick = async () => {
   const b = $("btnNfExcluir");
