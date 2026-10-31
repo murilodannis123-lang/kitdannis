@@ -382,3 +382,7 @@ body.doc-aberto { overflow: hidden; }
   .doc-bar, .doc-aviso { display: none !important; }
   .doc-papel { margin: 0; padding: 0; box-shadow: none; max-width: none; border-radius: 0; }
 }
+
+/* Pergunta ao salvar nota */
+.pergunta { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.pergunta p { margin: 0; font-size: .95rem; color: var(--ink); }
