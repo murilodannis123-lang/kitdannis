@@ -22,6 +22,10 @@ const VIEWS = ["inicio", "lancar", "pedreiro", "gastos", "notas", "aluguel"];
 const BUCKET = "notas";
 const $ = id => document.getElementById(id);
 
+// Link de "esqueci minha senha": o Supabase volta com #...type=recovery (ou com erro, se o link venceu)
+const HASH_INICIAL = location.hash || "";
+const emRecuperacao = /type=recovery/.test(HASH_INICIAL);
+const erroDoLink = /error_code=|error=/.test(HASH_INICIAL) ? decodeURIComponent((HASH_INICIAL.match(/error_description=([^&]+)/) || [])[1] || "").replace(/\+/g, " ") : "";
 const CFG = window.KITDANNIS_CONFIG || {};
 const configurado = /^https:\/\/.+/.test(CFG.SUPABASE_URL || "") && (CFG.SUPABASE_ANON_KEY || "").length > 20;
 const sb = configurado ? supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, {
@@ -899,6 +903,7 @@ const textoPendente = textoDaSiri();
 function mostrarTela(qual) {
   $("telaConfig").hidden = qual !== "config";
   $("telaLogin").hidden = qual !== "login";
+  $("telaNovaSenha").hidden = qual !== "novaSenha";
   $("appRoot").hidden = qual !== "app";
 }
 $("formLogin").addEventListener("submit", async e => {
@@ -913,6 +918,47 @@ $("formLogin").addEventListener("submit", async e => {
   m.textContent = "";
 });
 $("btnSair").onclick = async () => { await sb.auth.signOut(); };
+
+/* Mostrar/ocultar senha (o olho) */
+document.querySelectorAll(".olho").forEach(b => b.addEventListener("click", () => {
+  const inp = b.parentElement.querySelector("input");
+  const mostrar = inp.type === "password";
+  inp.type = mostrar ? "text" : "password";
+  b.setAttribute("aria-pressed", mostrar ? "true" : "false");
+  b.setAttribute("aria-label", mostrar ? "Ocultar senha" : "Mostrar senha");
+  inp.focus();
+}));
+
+/* Esqueci minha senha: manda o link por e-mail */
+$("btnEsqueci").onclick = async () => {
+  const m = $("msgLogin"), email = $("lgEmail").value.trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { m.className = "msg erro"; m.textContent = "Digite seu e-mail no campo acima e toque de novo em Esqueci minha senha."; $("lgEmail").focus(); return; }
+  $("btnEsqueci").disabled = true; m.className = "msg"; m.textContent = "Enviando o link…";
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+  $("btnEsqueci").disabled = false;
+  if (error) {
+    m.className = "msg erro";
+    m.textContent = /rate|limit|seconds/i.test(error.message || "") ? "Muitos pedidos seguidos. Espere alguns minutos e tente de novo." : "Não consegui enviar o link. Tente de novo em instantes.";
+    return;
+  }
+  m.className = "msg ok"; m.textContent = `Pronto! Se ${email} estiver cadastrado, chega um e-mail com o link para criar uma senha nova. Confira também o spam.`;
+};
+
+/* Tela de nova senha (abre pelo link do e-mail) */
+$("formNovaSenha").addEventListener("submit", async e => {
+  e.preventDefault();
+  const m = $("msgNovaSenha"), s1 = $("nsSenha").value, s2 = $("nsSenha2").value;
+  if (s1.length < 8) { m.className = "msg erro"; m.textContent = "A senha precisa ter pelo menos 8 caracteres."; return; }
+  if (s1 !== s2) { m.className = "msg erro"; m.textContent = "As duas senhas não estão iguais."; return; }
+  $("btnNovaSenha").disabled = true; m.className = "msg"; m.textContent = "Salvando…";
+  const { error } = await sb.auth.updateUser({ password: s1 });
+  $("btnNovaSenha").disabled = false;
+  if (error) { m.className = "msg erro"; m.textContent = /different|same/i.test(error.message || "") ? "A senha nova precisa ser diferente da antiga." : "Não consegui salvar. Abra de novo o link do e-mail e tente outra vez."; return; }
+  $("nsSenha").value = ""; $("nsSenha2").value = ""; m.textContent = "";
+  toast("Senha nova salva");
+  const { data } = await sb.auth.getSession();
+  if (data.session) entrarNoApp(data.session); else mostrarTela("login");
+});
 
 let iniciado = false;
 async function entrarNoApp(sessao) {
@@ -939,9 +985,16 @@ window.addEventListener("offline", () => setStatus("Sem internet", "off"));
 (async () => {
   if (!sb) { mostrarTela("config"); return; }
   const { data } = await sb.auth.getSession();
-  if (data.session) entrarNoApp(data.session); else mostrarTela("login");
+  if (HASH_INICIAL.includes("access_token") || erroDoLink) history.replaceState(null, "", location.pathname + location.search);
+  if (emRecuperacao && data.session) mostrarTela("novaSenha");
+  else if (data.session) entrarNoApp(data.session);
+  else {
+    mostrarTela("login");
+    if (erroDoLink) { const m = $("msgLogin"); m.className = "msg erro"; m.textContent = "Esse link de senha venceu ou já foi usado. Digite seu e-mail e toque em Esqueci minha senha para receber outro."; }
+  }
   sb.auth.onAuthStateChange((evento, sessao) => {
-    if (evento === "SIGNED_IN" && sessao && !usuario) entrarNoApp(sessao);
+    if (evento === "PASSWORD_RECOVERY") { mostrarTela("novaSenha"); return; }
+    if (evento === "SIGNED_IN" && sessao && !usuario && $("telaNovaSenha").hidden) entrarNoApp(sessao);
     if (evento === "SIGNED_OUT") { usuario = null; gastos = []; notas = []; acordo = null; orcamento = null; aluguel = null; iniciado = false; mostrarTela("login"); }
   });
 })();
