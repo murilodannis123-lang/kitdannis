@@ -1,0 +1,22 @@
+# Mantém o banco do KitDannis (Supabase, plano grátis) ativo.
+# O Supabase pausa projetos grátis depois de 7 dias sem uso; esta rotina faz uma
+# consulta leve a cada 3 dias. A chave usada é a "publishable", que já é pública
+# no config.js e não dá acesso a nenhum dado (o banco só libera dados com login).
+name: Manter banco ativo
+
+on:
+  schedule:
+    - cron: "23 13 */3 * *"   # a cada 3 dias, por volta das 10h23 de Brasília
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consulta leve no Supabase
+        run: |
+          status=$(curl -sS -o /dev/null -w "%{http_code}" \
+            "https://yhxdljexzmmihpevmlfr.supabase.co/rest/v1/config?select=chave&limit=1" \
+            -H "apikey: sb_publishable_jLsUpLp-8uN3EfhWRwi62A_bZX1QuYP")
+          echo "Resposta do Supabase: $status"
+          test "$status" = "200"
