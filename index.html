@@ -23,9 +23,21 @@
   <form class="card" id="formLogin" novalidate>
     <div class="logo"><img src="icon-192.png" alt=""><div><h1>KitDannis</h1><p>Gestão da obra</p></div></div>
     <label for="lgEmail">E-mail<input id="lgEmail" type="email" autocomplete="username" inputmode="email" required></label>
-    <label for="lgSenha">Senha<input id="lgSenha" type="password" autocomplete="current-password" required></label>
+    <label for="lgSenha">Senha<span class="senha-campo"><input id="lgSenha" type="password" autocomplete="current-password" required><button type="button" class="olho" aria-label="Mostrar senha" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="risco" d="M4 4l16 16"/></svg></button></span></label>
     <button type="submit" class="btn prim" id="btnEntrar">Entrar</button>
+    <button type="button" class="btn link" id="btnEsqueci">Esqueci minha senha</button>
     <p class="msg" id="msgLogin" role="status"></p>
+  </form>
+</section>
+
+<section class="login gutter" id="telaNovaSenha" hidden>
+  <form class="card" id="formNovaSenha" novalidate>
+    <div class="logo"><img src="icon-192.png" alt=""><div><h1>Nova senha</h1><p>Escolha a senha nova do KitDannis</p></div></div>
+    <label for="nsSenha">Nova senha<span class="senha-campo"><input id="nsSenha" type="password" autocomplete="new-password" minlength="8" required><button type="button" class="olho" aria-label="Mostrar senha" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="risco" d="M4 4l16 16"/></svg></button></span></label>
+    <label for="nsSenha2">Repita a nova senha<span class="senha-campo"><input id="nsSenha2" type="password" autocomplete="new-password" minlength="8" required><button type="button" class="olho" aria-label="Mostrar senha" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="risco" d="M4 4l16 16"/></svg></button></span></label>
+    <p class="dica">Pelo menos 8 caracteres. Use uma que você não usa em outros sites.</p>
+    <button type="submit" class="btn prim" id="btnNovaSenha">Salvar nova senha</button>
+    <p class="msg" id="msgNovaSenha" role="status"></p>
   </form>
 </section>
 
