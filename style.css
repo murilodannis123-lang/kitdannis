@@ -386,3 +386,15 @@ body.doc-aberto { overflow: hidden; }
 /* Pergunta ao salvar nota */
 .pergunta { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .pergunta p { margin: 0; font-size: .95rem; color: var(--ink); }
+
+/* Senha com olho */
+.senha-campo { position: relative; display: block; }
+.senha-campo input { width: 100%; padding-right: 48px; }
+.olho { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; display: grid; place-items: center; border: 0; background: none; color: var(--muted); border-radius: 8px; cursor: pointer; }
+.olho:hover { color: var(--ink); background: var(--surface-2); }
+.olho:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.olho .ic { width: 22px; height: 22px; }
+.olho .risco { display: none; }
+.olho[aria-pressed="true"] .risco { display: inline; }
+.btn.link#btnEsqueci { justify-self: center; align-self: center; }
+.msg.ok { color: var(--ok); }
