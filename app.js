@@ -29,7 +29,8 @@ const erroDoLink = /error_code=|error=/.test(HASH_INICIAL) ? decodeURIComponent(
 const CFG = window.KITDANNIS_CONFIG || {};
 const configurado = /^https:\/\/.+/.test(CFG.SUPABASE_URL || "") && (CFG.SUPABASE_ANON_KEY || "").length > 20;
 const sb = configurado ? supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, storageKey: "kitdannis-auth" },
+  // lock simples: o app usa uma aba só, e o lock padrão do navegador às vezes trava o login por segundos (iPhone/PWA)
+  auth: { persistSession: true, autoRefreshToken: true, storageKey: "kitdannis-auth", lock: async (_nome, _espera, fn) => await fn() },
 }) : null;
 
 let usuario = null;
@@ -97,8 +98,9 @@ async function carregar() {
   orcamento = cfg.obra?.orcamento > 0 ? Number(cfg.obra.orcamento) : null;
   aluguel = cfg.aluguel || null;
   setStatus("Sincronizado", "on");
-  await assinarUrls();
-  render();
+  render();                       // mostra os dados na hora
+  await assinarUrls();            // fotos das notas chegam depois
+  renderNotas();
 }
 async function salvarConfig(chave, valor) {
   const { error } = await sb.from("config").upsert({ user_id: usuario.id, chave, valor }, { onConflict: "user_id,chave" });
@@ -900,7 +902,16 @@ function textoDaSiri() {
 const textoPendente = textoDaSiri();
 
 /* ---------- Login ---------- */
+/* Abre a conexão com o Supabase antes do toque em Entrar (evita a espera do primeiro acesso) */
+let aquecido = 0;
+function aquecerConexao() {
+  if (!configurado || Date.now() - aquecido < 20000) return;
+  aquecido = Date.now();
+  fetch(CFG.SUPABASE_URL + "/auth/v1/health", { headers: { apikey: CFG.SUPABASE_ANON_KEY } }).catch(() => {});
+}
+["lgEmail", "lgSenha"].forEach(id => { $(id).addEventListener("focus", aquecerConexao); $(id).addEventListener("input", aquecerConexao); });
 function mostrarTela(qual) {
+  if (qual === "login") aquecerConexao();
   $("telaConfig").hidden = qual !== "config";
   $("telaLogin").hidden = qual !== "login";
   $("telaNovaSenha").hidden = qual !== "novaSenha";
