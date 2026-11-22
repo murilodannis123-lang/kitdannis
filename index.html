@@ -35,11 +35,17 @@
 <section class="login gutter" id="telaNovaSenha" hidden>
   <form class="card" id="formNovaSenha" novalidate>
     <div class="logo"><img src="icon-192.png" alt=""><div><h1>Nova senha</h1><p>Escolha a senha nova do KitDannis</p></div></div>
+    <div id="nsRec" class="sec-campos" hidden>
+      <label for="nsEmail">E-mail<input id="nsEmail" type="email" autocomplete="username" inputmode="email"></label>
+      <label for="nsCodigo">Código de recuperação<input id="nsCodigo" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX"></label>
+      <p class="dica">É o código que apareceu quando o acesso foi criado (guarde no seu gerenciador de senhas ou impresso).</p>
+    </div>
     <label for="nsSenha">Nova senha<span class="senha-campo"><input id="nsSenha" type="password" autocomplete="new-password" minlength="8" required><button type="button" class="olho" aria-label="Mostrar senha" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="risco" d="M4 4l16 16"/></svg></button></span></label>
     <label for="nsSenha2">Repita a nova senha<span class="senha-campo"><input id="nsSenha2" type="password" autocomplete="new-password" minlength="8" required><button type="button" class="olho" aria-label="Mostrar senha" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="risco" d="M4 4l16 16"/></svg></button></span></label>
     <p class="dica">Pelo menos 8 caracteres. Use uma que você não usa em outros sites.</p>
     <button type="submit" class="btn prim" id="btnNovaSenha">Salvar nova senha</button>
     <p class="msg" id="msgNovaSenha" role="status"></p>
+    <button type="button" class="btn link" id="nsVoltar" hidden>Voltar para o login</button>
   </form>
 </section>
 
@@ -109,6 +115,16 @@
     <div class="card">
       <div class="card-head"><h2>Últimos lançamentos</h2><button type="button" class="btn link" data-go="gastos">Ver todos</button></div>
       <div class="rows" id="ultimos"></div>
+    </div>
+
+    <div class="card" id="cardAcesso" hidden>
+      <div class="card-head"><h2>Acesso</h2></div>
+      <label for="acSenha">Trocar senha<span class="senha-campo"><input id="acSenha" type="password" autocomplete="new-password" minlength="8" placeholder="Senha nova"><button type="button" class="olho" aria-label="Mostrar senha" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="risco" d="M4 4l16 16"/></svg></button></span></label>
+      <button type="button" class="btn" id="btnTrocarSenha">Salvar senha nova</button>
+      <p class="dica">Se esquecer a senha, você entra com o <b>código de recuperação</b>. Se perdeu o código, gere outro aqui.</p>
+      <button type="button" class="btn" id="btnNovoCodigo">Gerar novo código de recuperação</button>
+      <div id="codigoBox" class="aviso" hidden>Seu código novo: <b class="num" id="codigoNovo"></b><br>Anote agora. Ele não aparece de novo.</div>
+      <p class="msg" id="msgAcesso" role="status"></p>
     </div>
   </section>
 
@@ -288,6 +304,7 @@
 
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
+<script src="cf-client.js"></script>
 <script src="app.js"></script>
 <script src="aluguel.js"></script>
 <script src="contrato.js"></script>
