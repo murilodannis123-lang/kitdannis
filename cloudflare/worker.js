@@ -1,7 +1,7 @@
 // KitDannis — servidor no Cloudflare (Worker + D1 + KV).
 // Substitui o Supabase: login, dados (gastos, notas, config), arquivos das notas e a IA "separar".
 // Ligações (bindings) esperadas: DB (D1), ARQUIVOS (KV).
-// Segredos: ANTHROPIC_API_KEY, ASSINATURA (texto aleatório longo), SETUP_TOKEN (só para criar o 1º acesso).
+// Segredos: ANTHROPIC_API_KEY, SETUP_TOKEN (só para criar o 1º acesso). ASSINATURA é opcional: sem ela, o servidor cria e guarda uma chave própria.
 // Variável: ORIGENS (sites que podem usar a API, separados por vírgula).
 
 const MODELO = "claude-haiku-5-5";
@@ -33,6 +33,14 @@ function iguais(a, b) { // comparação em tempo constante
   if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
   let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0;
 }
+let assinaturaCache = null;
+async function chaveAssinatura(env) {
+  if (env.ASSINATURA) return env.ASSINATURA;
+  if (assinaturaCache) return assinaturaCache;
+  let k = await env.ARQUIVOS.get("__sistema/assinatura"); // fora da pasta de qualquer usuário
+  if (!k) { k = aleatorio(32); await env.ARQUIVOS.put("__sistema/assinatura", k); }
+  return (assinaturaCache = k);
+}
 async function hmac(segredo, txt) {
   const k = await crypto.subtle.importKey("raw", enc.encode(segredo), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return hex(await crypto.subtle.sign("HMAC", k, enc.encode(txt)));
@@ -46,7 +54,7 @@ const normEmail = e => String(e || "").trim().toLowerCase();
 /* ---------- respostas e CORS ---------- */
 function corsDe(req, env) {
   const origem = req.headers.get("Origin") || "";
-  const ok = (env.ORIGENS || "").split(",").map(s => s.trim()).filter(Boolean);
+  const ok = (env.ORIGENS || "https://murilodannis123-lang.github.io").split(",").map(s => s.trim()).filter(Boolean);
   const h = { "Access-Control-Allow-Headers": "authorization, content-type, x-upsert", "Access-Control-Allow-Methods": "GET, POST, PATCH, PUT, DELETE, OPTIONS", "Access-Control-Max-Age": "86400", "Vary": "Origin" };
   if (ok.includes(origem)) h["Access-Control-Allow-Origin"] = origem;
   return h;
@@ -230,7 +238,7 @@ async function arquivos(req, env, user, resto) {
     const data = [];
     for (const p of paths.slice(0, 500)) {
       if (!caminhoOk(user, p)) { data.push({ path: p, signedUrl: null, error: "caminho inválido" }); continue; }
-      const sig = await hmac(env.ASSINATURA, `${p}|${exp}`);
+      const sig = await hmac(await chaveAssinatura(env), `${p}|${exp}`);
       data.push({ path: p, signedUrl: `${base}${p.split("/").map(encodeURIComponent).join("/")}?exp=${exp}&sig=${sig}` });
     }
     return json(req, env, data);
@@ -262,7 +270,7 @@ async function arquivoAssinado(req, env, resto) {
   const url = new URL(req.url), exp = Number(url.searchParams.get("exp")), sig = url.searchParams.get("sig") || "";
   const p = resto.split("/").map(decodeURIComponent).join("/");
   if (!exp || exp < agora()) return erro(req, env, "Link vencido.", 403);
-  if (!iguais(await hmac(env.ASSINATURA, `${p}|${exp}`), sig)) return erro(req, env, "Assinatura inválida.", 403);
+  if (!iguais(await hmac(await chaveAssinatura(env), `${p}|${exp}`), sig)) return erro(req, env, "Assinatura inválida.", 403);
   return entregarArquivo(req, env, p);
 }
 
@@ -340,12 +348,22 @@ async function separar(req, env) {
   catch { return erro(req, env, `Não entendi a resposta da IA (${j.stop_reason || "?"}).`, 502); }
 }
 
+/* ---------- tabelas do banco: criadas sozinhas na primeira vez ---------- */
+const TABELAS_SQL = [ "CREATE TABLE IF NOT EXISTS usuarios (\n  id TEXT PRIMARY KEY,\n  email TEXT NOT NULL UNIQUE,\n  senha_hash TEXT NOT NULL,\n  senha_salt TEXT NOT NULL,\n  cod_hash TEXT NOT NULL,\n  cod_salt TEXT NOT NULL,\n  criado_em TEXT NOT NULL\n)", "CREATE TABLE IF NOT EXISTS sessoes (\n  token_hash TEXT PRIMARY KEY,\n  user_id TEXT NOT NULL,\n  expira INTEGER NOT NULL\n)", "CREATE TABLE IF NOT EXISTS falhas (\n  chave TEXT NOT NULL,\n  ts INTEGER NOT NULL\n)", "CREATE INDEX IF NOT EXISTS falhas_chave ON falhas (chave, ts)", "CREATE TABLE IF NOT EXISTS gastos (\n  id TEXT PRIMARY KEY,\n  user_id TEXT NOT NULL,\n  descricao TEXT NOT NULL DEFAULT '',\n  valor REAL NOT NULL CHECK (valor > 0),\n  categoria TEXT NOT NULL DEFAULT 'outros',\n  fornecedor TEXT NOT NULL DEFAULT '',\n  data TEXT NOT NULL,\n  pagamento TEXT NOT NULL DEFAULT '',\n  pedreiro INTEGER NOT NULL DEFAULT 0,\n  criado_em TEXT NOT NULL,\n  editado_em TEXT\n)", "CREATE INDEX IF NOT EXISTS gastos_user_data ON gastos (user_id, data DESC)", "CREATE TABLE IF NOT EXISTS notas (\n  id TEXT PRIMARY KEY,\n  user_id TEXT NOT NULL,\n  arquivo TEXT NOT NULL,\n  tipo TEXT NOT NULL DEFAULT '',\n  nome_arquivo TEXT NOT NULL DEFAULT '',\n  fornecedor TEXT NOT NULL DEFAULT '',\n  valor REAL,\n  data TEXT,\n  numero TEXT NOT NULL DEFAULT '',\n  gasto_id TEXT,\n  criado_em TEXT NOT NULL\n)", "CREATE INDEX IF NOT EXISTS notas_user_data ON notas (user_id, data DESC)", "CREATE TABLE IF NOT EXISTS config (\n  user_id TEXT NOT NULL,\n  chave TEXT NOT NULL,\n  valor TEXT NOT NULL,\n  PRIMARY KEY (user_id, chave)\n)" ];
+let tabelasOk = false;
+async function garantirTabelas(env) {
+  if (tabelasOk) return;
+  await env.DB.batch(TABELAS_SQL.map(s => env.DB.prepare(s)));
+  tabelasOk = true;
+}
+
 /* ---------- roteador ---------- */
 export default {
   async fetch(req, env) {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsDe(req, env) });
     const url = new URL(req.url), p = url.pathname;
     try {
+      await garantirTabelas(env);
       if (p === "/" || p === "/api/saude") {
         await env.DB.prepare("SELECT 1").first();
         return json(req, env, { ok: true, app: "KitDannis", hora: new Date().toISOString() });
