@@ -398,3 +398,4 @@ body.doc-aberto { overflow: hidden; }
 .olho[aria-pressed="true"] .risco { display: inline; }
 .btn.link#btnEsqueci { justify-self: center; align-self: center; }
 .msg.ok { color: var(--ok); }
+.sec-campos { display: flex; flex-direction: column; gap: 14px; }
