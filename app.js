@@ -27,8 +27,10 @@ const HASH_INICIAL = location.hash || "";
 const emRecuperacao = /type=recovery/.test(HASH_INICIAL);
 const erroDoLink = /error_code=|error=/.test(HASH_INICIAL) ? decodeURIComponent((HASH_INICIAL.match(/error_description=([^&]+)/) || [])[1] || "").replace(/\+/g, " ") : "";
 const CFG = window.KITDANNIS_CONFIG || {};
-const configurado = /^https:\/\/.+/.test(CFG.SUPABASE_URL || "") && (CFG.SUPABASE_ANON_KEY || "").length > 20;
-const sb = configurado ? supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, {
+// Servidor: Cloudflare quando o config.js tiver API_URL; senão, Supabase
+const NUVEM = /^https:\/\/.+/.test(CFG.API_URL || "") && !!window.kitCloud;
+const configurado = NUVEM || (/^https:\/\/.+/.test(CFG.SUPABASE_URL || "") && (CFG.SUPABASE_ANON_KEY || "").length > 20);
+const sb = NUVEM ? kitCloud.createClient(CFG.API_URL) : configurado ? supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, {
   // lock simples: o app usa uma aba só, e o lock padrão do navegador às vezes trava o login por segundos (iPhone/PWA)
   auth: { persistSession: true, autoRefreshToken: true, storageKey: "kitdannis-auth", lock: async (_nome, _espera, fn) => await fn() },
 }) : null;
@@ -907,6 +909,7 @@ let aquecido = 0;
 function aquecerConexao() {
   if (!configurado || Date.now() - aquecido < 20000) return;
   aquecido = Date.now();
+  if (NUVEM) { sb.aquecer(); return; }
   fetch(CFG.SUPABASE_URL + "/auth/v1/health", { headers: { apikey: CFG.SUPABASE_ANON_KEY } }).catch(() => {});
 }
 ["lgEmail", "lgSenha"].forEach(id => { $(id).addEventListener("focus", aquecerConexao); $(id).addEventListener("input", aquecerConexao); });
@@ -943,6 +946,7 @@ document.querySelectorAll(".olho").forEach(b => b.addEventListener("click", () =
 /* Esqueci minha senha: manda o link por e-mail */
 $("btnEsqueci").onclick = async () => {
   const m = $("msgLogin"), email = $("lgEmail").value.trim();
+  if (NUVEM) { abrirRecuperacao(email); return; }
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { m.className = "msg erro"; m.textContent = "Digite seu e-mail no campo acima e toque de novo em Esqueci minha senha."; $("lgEmail").focus(); return; }
   $("btnEsqueci").disabled = true; m.className = "msg"; m.textContent = "Enviando o link…";
   const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
@@ -955,12 +959,37 @@ $("btnEsqueci").onclick = async () => {
   m.className = "msg ok"; m.textContent = `Pronto! Se ${email} estiver cadastrado, chega um e-mail com o link para criar uma senha nova. Confira também o spam.`;
 };
 
-/* Tela de nova senha (abre pelo link do e-mail) */
+/* Cloudflare: recuperar com o código de recuperação (não tem e-mail) */
+let recuperandoComCodigo = false;
+function abrirRecuperacao(email) {
+  recuperandoComCodigo = true;
+  $("nsRec").hidden = false; $("nsVoltar").hidden = false;
+  $("nsEmail").value = email || ""; $("nsCodigo").value = ""; $("msgNovaSenha").textContent = "";
+  mostrarTela("novaSenha");
+  (email ? $("nsCodigo") : $("nsEmail")).focus();
+}
+$("nsVoltar").onclick = () => { recuperandoComCodigo = false; $("nsRec").hidden = true; $("nsVoltar").hidden = true; mostrarTela("login"); };
+
+/* Tela de nova senha (abre pelo link do e-mail, ou pelo código no Cloudflare) */
 $("formNovaSenha").addEventListener("submit", async e => {
   e.preventDefault();
   const m = $("msgNovaSenha"), s1 = $("nsSenha").value, s2 = $("nsSenha2").value;
   if (s1.length < 8) { m.className = "msg erro"; m.textContent = "A senha precisa ter pelo menos 8 caracteres."; return; }
   if (s1 !== s2) { m.className = "msg erro"; m.textContent = "As duas senhas não estão iguais."; return; }
+  if (recuperandoComCodigo) {
+    const email = $("nsEmail").value.trim(), codigo = $("nsCodigo").value.trim();
+    if (!email || !codigo) { m.className = "msg erro"; m.textContent = "Preencha o e-mail e o código de recuperação."; return; }
+    $("btnNovaSenha").disabled = true; m.className = "msg"; m.textContent = "Salvando…";
+    const { error } = await sb.auth.recuperar({ email, codigo, password: s1 });
+    $("btnNovaSenha").disabled = false;
+    if (error) { m.className = "msg erro"; m.textContent = error.status === 429 ? "Muitas tentativas. Espere 15 minutos." : "E-mail ou código de recuperação errado."; return; }
+    recuperandoComCodigo = false; $("nsRec").hidden = true; $("nsVoltar").hidden = true;
+    $("nsSenha").value = ""; $("nsSenha2").value = ""; m.textContent = "";
+    toast("Senha nova salva");
+    const { data } = await sb.auth.getSession();
+    if (data.session) entrarNoApp(data.session);
+    return;
+  }
   $("btnNovaSenha").disabled = true; m.className = "msg"; m.textContent = "Salvando…";
   const { error } = await sb.auth.updateUser({ password: s1 });
   $("btnNovaSenha").disabled = false;
@@ -970,6 +999,28 @@ $("formNovaSenha").addEventListener("submit", async e => {
   const { data } = await sb.auth.getSession();
   if (data.session) entrarNoApp(data.session); else mostrarTela("login");
 });
+
+/* Cloudflare: trocar senha e gerar novo código de recuperação (cartão "Acesso" na Visão geral) */
+if (NUVEM) {
+  $("cardAcesso").hidden = false;
+  $("btnNovoCodigo").onclick = async () => {
+    const b = $("btnNovoCodigo"), m = $("msgAcesso");
+    if (b.dataset.armado !== "1") { b.dataset.armado = "1"; b.textContent = "Confirmar: o código antigo deixa de valer"; setTimeout(() => { b.dataset.armado = ""; b.textContent = "Gerar novo código de recuperação"; }, 5000); return; }
+    b.dataset.armado = ""; b.disabled = true; b.textContent = "Gerando…";
+    const { data, error } = await sb.auth.novoCodigo();
+    b.disabled = false; b.textContent = "Gerar novo código de recuperação";
+    if (error) { m.className = "msg erro"; m.textContent = "Não consegui gerar. Tente de novo."; return; }
+    $("codigoNovo").textContent = data.codigo; $("codigoBox").hidden = false;
+    m.className = "msg"; m.textContent = "";
+  };
+  $("btnTrocarSenha").onclick = async () => {
+    const m = $("msgAcesso"), s = $("acSenha").value;
+    if (s.length < 8) { m.className = "msg erro"; m.textContent = "A senha precisa ter pelo menos 8 caracteres."; return; }
+    const { error } = await sb.auth.updateUser({ password: s });
+    if (error) { m.className = "msg erro"; m.textContent = "Não consegui trocar a senha."; return; }
+    $("acSenha").value = ""; m.className = "msg ok"; m.textContent = "Senha trocada.";
+  };
+}
 
 let iniciado = false;
 async function entrarNoApp(sessao) {
