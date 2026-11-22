@@ -1,0 +1,38 @@
+# Instala ou atualiza o servidor do KitDannis no Cloudflare.
+# Só roda quando alguém clica em "Run workflow" (Actions → Instalar servidor Cloudflare).
+# Usa 3 segredos do repositório: CLOUDFLARE_API_TOKEN, ANTHROPIC_API_KEY e SETUP_TOKEN.
+name: Instalar servidor Cloudflare
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  instalar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Conferir segredos
+        env:
+          T: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          K: ${{ secrets.ANTHROPIC_API_KEY }}
+          S: ${{ secrets.SETUP_TOKEN }}
+        run: |
+          falta=""
+          [ -n "$T" ] || falta="$falta CLOUDFLARE_API_TOKEN"
+          [ -n "$K" ] || falta="$falta ANTHROPIC_API_KEY"
+          [ -n "$S" ] || falta="$falta SETUP_TOKEN"
+          if [ -n "$falta" ]; then echo "::error::Faltam os segredos:$falta (Settings → Secrets and variables → Actions)"; exit 1; fi
+      - name: Instalar no Cloudflare
+        working-directory: cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SETUP_TOKEN: ${{ secrets.SETUP_TOKEN }}
+        run: bash instalar.sh
